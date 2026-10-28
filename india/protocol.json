@@ -1,0 +1,29 @@
+{
+  "schema": "india-protocol/1",
+  "frozen_on": "2026-10-28",
+  "status": "pre-registered before any evaluation code or performance figure existed",
+  "hypothesis": "A passive, equally weighted holding of every point-in-time eligible NIFTY 50, Nifty Next 50 and Nifty Bank ETF, rebalanced monthly from Rs 3,000 in whole units, tracks the NIFTY 50 TRI before costs; its shortfall after evidence-backed costs measures what costs, whole-unit rounding and cash drag take from a Rs 3,000 account.",
+  "venue": "BSE",
+  "capital_inr": 3000,
+  "windows": {
+    "development": {"start": "2018-01-01", "end": "2021-12-31", "use": "data and mechanics checks only; the strategy has no parameters to tune"},
+    "evaluation": {"start": "2022-01-01", "end": "2026-10-27"}
+  },
+  "schedule": "the first tradable session of each calendar month inside the evaluation window",
+  "strategy": {"file": "strategy_baseline.py", "class": "EqualWeightEligible", "name": "baseline-equal-weight-eligible", "version": "1", "sha256": "9d3275d338df66d97a0f8c8a0f7392156f132f086ca6e151b551b54cebe9085e"},
+  "criteria": {"file": "etf_criteria.json", "sha256": "7027a77292767b533b6db02f546406ab3168fa5b9acac1f50e2f209ae04e4391"},
+  "isolation": "subprocess",
+  "execution": {"liquidity_cap": "ex-ante", "on_unconfirmed_closure": "unfilled", "on_insufficient_cash": "reject", "orders": "day orders, never retried"},
+  "sensitivity": [
+    {"name": "roll-unconfirmed-closures", "on_unconfirmed_closure": "roll"},
+    {"name": "reduce-on-insufficient-cash", "on_insufficient_cash": "reduce"},
+    {"name": "ex-post-liquidity (uses same-day information; never a headline result)", "liquidity_cap": "ex-post"}
+  ],
+  "benchmarks": [
+    {"name": "NIFTY 50 TRI", "requires": "official file imported, validated and covering the evaluation window"},
+    {"name": "cost-matched NIFTYBEES buy-and-hold", "requires": "NIFTYBEES identity, corporate actions, distributions and costs verified; bought on the first decision date and held"},
+    {"name": "uninvested cash", "requires": "nothing: zero return by construction (cash earns nothing in this simulation); a control, not a market benchmark"}
+  ],
+  "metrics": "start and end value; return net of known costs (labelled when any fee is unresolved); CAGR only over at least 365 days; maximum drawdown over mark dates; volatility only with at least 24 monthly returns; turnover; order counts by outcome; fees by component; time invested; stale and gap counts; benchmark-relative return and drawdown when comparable",
+  "pre_tax": "investor-level taxes are reported as unresolved and never computed"
+}
