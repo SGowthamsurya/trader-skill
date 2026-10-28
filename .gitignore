@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+# Downloaded third-party market data stays local, never committed (see india/README.md).
+india/data/
