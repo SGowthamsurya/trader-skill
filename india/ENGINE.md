@@ -24,8 +24,8 @@ pit.MarketData (engine only)
 | --- | --- | --- |
 | 1 | `pit.py`: point-in-time market view | done |
 | 2 | `universe.py`: point-in-time universe; liquidity, listing and presence on trailing data only; candidates rebuilt from historical files (survivorship); split adjustment applied only from each action's `announced_on` | done |
-| 3 | `signals.py`: strategy interface and hash-chained signal ledger; strategy optionally in a separate process | next |
-| 4 | `simbroker.py`, `portfolio.py`: T+1 fills at the next tradable session's open, whole units, cash, rejections with reasons | |
+| 3 | `signals.py`: strategy interface and hash-chained signal ledger; strategy optionally in a separate process | done |
+| 4 | `simbroker.py`, `portfolio.py`: T+1 fills at the next tradable session's open, whole units, cash, rejections with reasons | next |
 | 5 | `costs.py`: evidence-backed, effective-dated components; `CostUnavailable` when any is missing | |
 | 6 | `readiness.py`, `evaluate.py`, `backtest.py`: the gate, metrics, benchmarks | |
 
@@ -59,7 +59,9 @@ through `pit.View`.
   Exchange-listed names are shown as hints, never as evidence.
 - Window: the last 250 tradable sessions up to t; 120 sessions of history
   needed; above 5% unknown-state days, liquidity and presence are
-  unresolved (proposed values, `etf_criteria.json` point_in_time).
+  unresolved (`etf_criteria.json` point_in_time). Approved by the user on
+  2026-10-28 as research assumptions, not optimized values; they are not to
+  be tuned on the final evaluation period.
 - A valid session on which an instrument did not trade is an observed zero;
   a documented gap, an invalid file or an unobserved weekday is unknown and
   left out, never zero. No-file days and holidays are not sessions.
@@ -68,6 +70,34 @@ through `pit.View`.
   window. This reduces survivorship bias only as far as the surviving files
   reach; it is not shown to be eliminated.
 - `etf.py` remains a whole-period data-quality review, not a selection rule.
+
+## Signals and the ledger (stage 3)
+
+- A strategy is a class with `NAME`, `VERSION`, `LOOKBACK` and
+  `decide(inp) -> {key: weight}`. It receives only a `StrategyInput`: the
+  decision date, eligible keys and their ISINs, the universe and market
+  digests, and the closes of eligible keys inside its lookback. No view,
+  universe, evidence, cache, fills or portfolio.
+- `run_isolated` runs `decide` in a separate `python -I` process in an empty
+  directory, given only the input as JSON: future data is not in its memory.
+  It is not a filesystem sandbox; a strategy that opens cache files itself
+  is outside what the engine can prevent.
+- Targets: eligible keys only, weights as 6-decimal strings, each at least
+  0, total at most 1 (the rest is cash). Invalid targets never reach the
+  ledger.
+- Ledger: canonical JSON lines (sorted keys, no floats), `open` /
+  `signal` / `seal` records, each hashed and linked to the one before;
+  strictly increasing decision dates; append-only API that re-verifies the
+  file; nothing after the seal. The signal chain has no timestamps, so the
+  same inputs give a byte-identical chain; the seal holds the only one.
+- Trust boundary: the chain detects edits, deletions, insertions and
+  reordering. A process able to rewrite the file can rewrite every hash and
+  forge a consistent chain (a test shows this); only the seal hash recorded
+  outside the ledger before evaluation catches it. `open_sealed(path,
+  expected_seal)` is the only reader for later stages and refuses an
+  unsealed ledger or a different seal.
+- The dummy strategies in `tests/_india_dummy_strategy.py` are mechanics
+  tests only, not strategies.
 
 ## Known limits
 

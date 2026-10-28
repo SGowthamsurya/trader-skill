@@ -41,6 +41,7 @@ which are unchanged.
 | `ENGINE.md` | the backtest engine design, stages and readiness gate |
 | `pit.py` | point-in-time market view: a strategy sees only sessions up to its decision date; reading later raises |
 | `universe.py` | point-in-time universe: which ETFs could be held on a date, from data and evidence knowable then, with reasons and a digest |
+| `signals.py` | strategy interface (past-only input, optional separate process) and the append-only, hash-chained, sealed signal ledger |
 | `ETF_REVIEW.md` | the current verdict for every candidate |
 
 ```bash

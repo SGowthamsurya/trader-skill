@@ -40,6 +40,8 @@ stronger protections, built in later stages.
 """
 
 import datetime
+import hashlib
+import json
 import os
 import sys
 
@@ -73,6 +75,7 @@ class MarketData(object):
             self._rows[_iso(day)] = keep
             self._ident[_iso(day)] = {k: r.get("isin") for k, r in rows.items() if r.get("isin")}
         self._sessions = sorted(d for d in self._rows if calendar.tradable(d))
+        self._digests = {}
 
     @property
     def venue(self):
@@ -83,6 +86,22 @@ class MarketData(object):
         if not self._cal.tradable(d):
             raise PitError("%s is not a tradable session (%s): no decision is taken on it" % (d, self._cal.status(d)))
         return View(self, d)
+
+    def digest_through(self, as_of):
+        """SHA-256 over every tradable session's rows (and documented gaps) up to and including as_of,
+        chained session by session, so it depends on nothing after as_of. Engine-side; built incrementally."""
+        d = _iso(as_of)
+        h = "0" * 64                              # self._digests caches the session chain only
+        for s in self._sessions:
+            if s > d:
+                break
+            if s not in self._digests:
+                body = json.dumps({"date": s, "rows": self._rows.get(s, {}), "ident": self._ident.get(s, {})},
+                                  sort_keys=True, separators=(",", ":"))
+                self._digests[s] = hashlib.sha256((h + body).encode("utf-8")).hexdigest()
+            h = self._digests[s]
+        gaps = sorted(g.isoformat() for g in getattr(self._cal, "gaps", {}) if g.isoformat() <= d)
+        return hashlib.sha256((h + json.dumps(gaps)).encode("utf-8")).hexdigest()
 
     def sessions_between(self, start, end):
         """Engine-only: tradable sessions in a closed range."""

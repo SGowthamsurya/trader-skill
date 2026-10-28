@@ -67,6 +67,10 @@ class Basics(unittest.TestCase):
         r = U.Rules.from_criteria(os.path.join(fx.INDIA, "etf_criteria.json"))
         self.assertEqual((r.threshold, r.capital, r.trailing, r.min_history, r.max_unknown),
                          (300000, 3000, 250, 120, 0.05))
+        with open(os.path.join(fx.INDIA, "etf_criteria.json")) as fh:
+            status = json.load(fh)["point_in_time"]["status"]
+        self.assertIn("approved by the user", status)
+        self.assertIn("must not be tuned using the final evaluation period", status)
 
     def test_only_fund_isins_are_candidates(self):
         snap = decide(market(lambda d: {"590901": etf_row(d), "500001": etf_row(d, "500001", "INE000SYN099")}),
