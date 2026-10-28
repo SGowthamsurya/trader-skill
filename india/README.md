@@ -39,6 +39,7 @@ which are unchanged.
 | `execution.py` | whether a simulated order could fill: valid session, a verified trade in the ETF, at most 5% of its traded value |
 | `MANUAL_DOWNLOADS.md` | the documents only a person can fetch here, with exact pages, formats, ranges and import commands |
 | `ENGINE.md` | the backtest engine design, stages and readiness gate |
+| `cache_inventory.json`, `inventory.py` | committed checksums of every cached file (no data) and a checker for a recovered cache |
 | `pit.py` | point-in-time market view: a strategy sees only sessions up to its decision date; reading later raises |
 | `universe.py` | point-in-time universe: which ETFs could be held on a date, from data and evidence knowable then, with reasons and a digest |
 | `signals.py` | strategy interface (past-only input, optional separate process) and the append-only, hash-chained, sealed signal ledger |
@@ -140,18 +141,20 @@ If the cache is lost:
   `etf_candidates.json`). `evidence.py check` reports each one missing.
 - BSE daily files can be collected again with `bhav.py collect` (about
   2,100 requests, roughly an hour at one request per second). Their URLs
-  follow from the dates; their individual checksums are only in the lost
-  manifest, so a re-collected file cannot be shown identical to the first.
+  follow from the dates. `cache_inventory.json` (committed; checksums only,
+  no data) records the SHA-256 and size of every file the study used, so
+  `inventory.py check` shows file by file whether a recovered cache is
+  identical (present), incomplete (missing) or damaged (corrupt).
 - Documents are re-downloaded from the URLs recorded in the committed files
   and imported with `evidence.py import`; a different checksum means the
   publisher's file changed and the evidence must be read again.
 - Anything derived from the cache (`ETF_REVIEW.md`, eligibility) must be
   regenerated and compared before it is relied on.
 
-To make the cache durable, the user can share a folder on their own
+To make the cache itself durable, the user can share a folder on their own
 computer through Remote Control (the session can then copy `india/data/`
-there with the user's approval), or approve committing a compact checksum
-inventory of the manifest (metadata only, no market data).
+there with the user's approval). Rechecked during Phase 3 completion: no
+such folder is available, so no backup of the data exists.
 
 ## Evidence levels
 
