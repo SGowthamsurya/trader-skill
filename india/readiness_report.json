@@ -1,0 +1,165 @@
+{
+  "checks": [
+    {
+      "category": "reproducibility",
+      "detail": "strategy 9d3275d338df and criteria 7027a7729276 match the frozen sha256 in protocol.json",
+      "id": "protocol-frozen",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "reproducibility",
+      "detail": "clean working tree at de15aca946c6",
+      "id": "git-clean",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "reproducibility",
+      "detail": "the raw cache exists only in this container; no approved backup holds a verified copy. cache_inventory.json (committed) names every file and checksum so a re-download can be verified",
+      "id": "off-container-backup",
+      "mandatory": false,
+      "status": "UNRESOLVED"
+    },
+    {
+      "category": "data",
+      "detail": "all 2184 inventoried files present and matching their sha256",
+      "id": "cache-inventory",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "data",
+      "detail": "no market data loaded for this report; the runner checks it again before any run",
+      "id": "market-data-provenance",
+      "mandatory": true,
+      "status": "NOT_APPLICABLE"
+    },
+    {
+      "category": "data",
+      "detail": "2018-01-01 to 2026-10-27: 2174 weekdays with a valid file, 126 refused in every layout, 2 documented gaps (2022-02-07, 2022-07-15), 0 unresolved; documented gaps are excluded from signals and fills and valued conservatively (Phase 2.2 decision)",
+      "id": "price-coverage",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "calendar",
+      "detail": "official holiday lists imported for 2025; missing for 2022, 2023, 2024, 2026; 56 weekday(s) in the window with no file and no official record (closure unconfirmed). Without the official list a no-file weekday cannot be told apart from a missed session",
+      "id": "official-calendar",
+      "mandatory": true,
+      "status": "BLOCKED"
+    },
+    {
+      "category": "universe",
+      "detail": "every fund-category fact is knowable only from 2026-10-28 (AMFI NAVAll.txt is undated, so it counts from its retrieval), after the evaluation start 2022-01-01; no ETF can pass the category test on any decision date. Needed: dated scheme documents or a dated AMFI list on or before 2022-01-01",
+      "id": "category-evidence",
+      "mandatory": true,
+      "status": "BLOCKED"
+    },
+    {
+      "category": "universe",
+      "detail": "the candidate list comes from every fund row in the daily files over the whole period, including ETFs that stopped trading; each decision uses only rows up to that day. Limitation: an ETF never seen in a BSE file is not a candidate",
+      "id": "survivorship",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "identity-corporate",
+      "detail": "3 of 5 market-qualified candidates pass (NIFTY1, NIFTYIETF, JUNIORBEES); not passing: HDFCNIFTY: BSE 539516: INF179KB1KP3 -> INF179KC1965 between 2021-02-16 and 2021-02-17, not confirmed; NIFTYBEES: BSE 590103: INF732E01011 -> INF204KB14I2 between 2019-12-18 and 2019-12-19, corroborated but not verified",
+      "id": "identity-evidence",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "identity-corporate",
+      "detail": "4 of 5 market-qualified candidates pass (NIFTY1, NIFTYBEES, NIFTYIETF, JUNIORBEES); not passing: HDFCNIFTY: 2021-02-16 -> 2021-02-17 ratio 0.0998, not confirmed",
+      "id": "corporate-evidence",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "distributions",
+      "detail": "0 of 5 market-qualified candidates pass (none); not passing: HDFCNIFTY: distribution (dividend / IDCW) history for the window is not verified; price files cannot show that no distribution occurred; NIFTY1: distribution (dividend / IDCW) history for the window is not verified; price files cannot show that no distribution occurred; NIFTYBEES: distribution (dividend / IDCW) history for the window is not verified; price files cannot show that no distribution occurred; NIFTYIETF: distribution (dividend / IDCW) history for the window is not verified; price files cannot show that no distribution occurred; JUNIORBEES: distribution (dividend / IDCW) history for the window is not verified; price files cannot show that no distribution occurred",
+      "id": "distributions-evidence",
+      "mandatory": true,
+      "status": "BLOCKED"
+    },
+    {
+      "category": "universe",
+      "detail": "0 candidate(s) pass every criterion over the whole period (none); with none the strategy holds cash throughout and the experiment measures nothing",
+      "id": "eligible-candidates",
+      "mandatory": true,
+      "status": "BLOCKED"
+    },
+    {
+      "category": "costs-taxes",
+      "detail": "12 component/side pair(s) lack a verified rate over 2022-01-01..2026-10-27: brokerage (buy); securities-transaction-tax (buy); exchange-transaction-charges-bse (buy); sebi-turnover-fee (buy); stamp-duty (buy); gst (buy); brokerage (sell); securities-transaction-tax (sell); exchange-transaction-charges-bse (sell); sebi-turnover-fee (sell); depository-debit-charge (sell); gst (sell)",
+      "id": "cost-coverage",
+      "mandatory": true,
+      "status": "BLOCKED"
+    },
+    {
+      "category": "costs-taxes",
+      "detail": "the protocol reports pre-tax results; investor-level items stay unresolved: capital-gains, tax-on-distributions",
+      "id": "investor-taxes",
+      "mandatory": false,
+      "status": "UNRESOLVED"
+    },
+    {
+      "category": "benchmark",
+      "detail": "NIFTY 50 TRI: no NIFTY 50 TRI file has been imported; download it and run tri.py import",
+      "id": "benchmark-tri",
+      "mandatory": true,
+      "status": "BLOCKED"
+    },
+    {
+      "category": "benchmark",
+      "detail": "cost-matched NIFTYBEES buy-and-hold needs verified evidence; missing: identity: BSE 590103: INF732E01011 -> INF204KB14I2 between 2019-12-18 and 2019-12-19, corroborated but not verified; distributions: distribution (dividend / IDCW) history for the window is not verified; price files cannot show that no distribution occurred; costs: 12 component/side pair(s) unresolved",
+      "id": "benchmark-niftybees",
+      "mandatory": true,
+      "status": "BLOCKED"
+    },
+    {
+      "category": "benchmark",
+      "detail": "uninvested cash returns zero by construction; a control, not a market benchmark",
+      "id": "benchmark-cash",
+      "mandatory": false,
+      "status": "PASS"
+    },
+    {
+      "category": "ledger",
+      "detail": "no ledger yet; the runner seals one and reopens it only with the seal recorded outside it",
+      "id": "ledger-sealed",
+      "mandatory": true,
+      "status": "NOT_APPLICABLE"
+    },
+    {
+      "category": "execution",
+      "detail": "ex-ante: an order is placed only if it is at most 5% of the decision day's traded value",
+      "id": "liquidity-cap",
+      "mandatory": true,
+      "status": "PASS"
+    },
+    {
+      "category": "execution",
+      "detail": "price bands, circuit limits, slippage from the open, queue position and partial fills are not modelled; the daily files do not record them. Fills at the open are an assumption",
+      "id": "price-limits",
+      "mandatory": false,
+      "status": "UNRESOLVED"
+    }
+  ],
+  "classification": "BLOCKED",
+  "context": {
+    "end": "2026-10-27",
+    "git_commit": "de15aca946c670aadf3f5a650f6af1931a6c91b4",
+    "git_dirty": false,
+    "phase": "pre-run",
+    "protocol": "protocol.json",
+    "protocol_sha256": "bdd685ac020bec79b5f8a7bd537982b6a01bd20d799da0a790bca7010ac5bcda",
+    "python": "3.13.17",
+    "start": "2022-01-01",
+    "venue": "BSE"
+  },
+  "digest": "787dd688259b0c468e2b9fc44dbd00b78eac1dfa8a1045234e66147ffd154b59",
+  "schema": "india-readiness/1"
+}
