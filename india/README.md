@@ -38,6 +38,8 @@ which are unchanged.
 | `marks.py` | valuation rules for any day, including gaps (no later price, no interpolation, flags) |
 | `execution.py` | whether a simulated order could fill: valid session, a verified trade in the ETF, at most 5% of its traded value |
 | `MANUAL_DOWNLOADS.md` | the documents only a person can fetch here, with exact pages, formats, ranges and import commands |
+| `ENGINE.md` | the backtest engine design, stages and readiness gate |
+| `pit.py` | point-in-time market view: a strategy sees only sessions up to its decision date; reading later raises |
 | `ETF_REVIEW.md` | the current verdict for every candidate |
 
 ```bash
