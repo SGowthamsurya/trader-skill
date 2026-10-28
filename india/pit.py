@@ -66,7 +66,10 @@ def _iso(d):
 class MarketData(object):
     """Everything the engine knows. Held by the engine; never given to a strategy."""
 
-    def __init__(self, calendar, rows_by_date, venue):
+    def __init__(self, calendar, rows_by_date, venue, provenance="unspecified"):
+        """provenance: where the rows came from. Only pit.from_cache sets "exchange-cache"; anything built
+        in code (tests, synthetic mechanics runs) keeps another value and the real-mode runner refuses it."""
+        self.provenance = provenance
         self._cal = calendar
         self._venue = venue
         self._rows, self._ident = {}, {}
@@ -237,4 +240,4 @@ def from_cache(cache, venue):
     rows = {}
     for r, _, rs in bhav.observations(cache, venue, funds_only=True):
         rows[r["date"]] = {secmaster.key_of(x): x for x in rs if x["exchange"] == venue}
-    return MarketData(cal, rows, venue)
+    return MarketData(cal, rows, venue, provenance="exchange-cache")

@@ -46,6 +46,13 @@ which are unchanged.
 | `portfolio.py` | accounting in integer paise: settled cash, unsettled proceeds, whole units, fees, a journal reconciled after every event |
 | `simbroker.py` | simulated broker: sealed-ledger input, next-session open fills, 5% cap, gap and closure rules, cost interface (no costs assumed) |
 | `ETF_REVIEW.md` | the current verdict for every candidate |
+| `costs.py`, `cost_schedule.json` | evidence-backed, effective-dated cost components; unresolved (never zero) without a verified rate |
+| `strategy_baseline.py`, `protocol.json`, `PROTOCOL.md` | the pre-registered baseline strategy and experiment protocol, frozen by SHA-256 |
+| `strategy_buyhold.py` | the cost-matched NIFTYBEES buy-and-hold benchmark |
+| `readiness.py` | the readiness gate: READY or BLOCKED, with every check's evidence |
+| `evaluate.py` | metrics and benchmark comparison from a run's journal |
+| `backtest.py` | the reproducible runner: `readiness`, `run` (real; refuses unless READY), `mechanics` (synthetic) |
+| `READINESS_REPORT.md`, `readiness_report.json` | the latest gate report on the real cache |
 
 ```bash
 python3 india/sources.py check
@@ -60,6 +67,9 @@ python3 india/etf.py evaluate
 python3 india/etf.py liquidity
 python3 india/bhav.py collect BSE --from 2018-01-01 --to 2026-10-27 --max-requests 300   # resumable
 python3 india/evidence.py check
+python3 india/backtest.py readiness     # gate report; exit 3 while BLOCKED
+python3 india/backtest.py mechanics     # synthetic end-to-end run, MECHANICS ONLY
+python3 india/backtest.py run           # real experiment; refuses unless READY
 python3 -m unittest discover -s tests -v
 ```
 

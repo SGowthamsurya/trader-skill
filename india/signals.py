@@ -368,7 +368,7 @@ def open_sealed(path, expected_seal=None):
     return SealedLedger(records)
 
 
-def generate(market, universe, strategy_path, class_name, dates, ledger_path, isolation="subprocess"):
+def generate(market, universe, strategy_path, class_name, dates, ledger_path, isolation="subprocess", sealed_at=None):
     """Decide on each date in order, appending one signal per date, then seal. Returns the seal hash.
     Outcomes are not computed here; nothing after a decision date reaches the strategy."""
     cls = load_strategy(strategy_path, class_name)
@@ -379,4 +379,4 @@ def generate(market, universe, strategy_path, class_name, dates, ledger_path, is
         inp = StrategyInput.build(market.view(d), snap, market.digest_through(d), int(cls.LOOKBACK))
         raw = run_isolated(strategy_path, class_name, inp) if isolation == "subprocess" else run_in_process(cls, inp)
         led.append_signal(inp, validate_targets(raw, inp), {"name": ident["name"], "version": ident["version"]})
-    return led.seal()
+    return led.seal(sealed_at)

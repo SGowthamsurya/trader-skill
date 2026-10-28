@@ -27,7 +27,7 @@ pit.MarketData (engine only)
 | 3 | `signals.py`: strategy interface and hash-chained signal ledger; strategy optionally in a separate process | done |
 | 4 | `simbroker.py`, `portfolio.py`: T+1 fills at the next tradable session's open, whole units, cash, rejections with reasons | done |
 | 5 | `costs.py`, `cost_schedule.json`: evidence-backed, effective-dated components; unresolved (never zero) when any is missing | done |
-| 6 | `readiness.py`, `evaluate.py`, `backtest.py`: the gate, metrics, benchmarks | |
+| 6 | `readiness.py`, `evaluate.py`, `backtest.py`: the gate, metrics, benchmarks, reproducible runner | done; the gate is BLOCKED (see `READINESS_REPORT.md`) |
 
 ## Readiness gate (a run is a valid performance result only if all pass)
 
@@ -41,6 +41,18 @@ pit.MarketData (engine only)
 6. Data gaps are exactly the documented, checksum-matched ones.
 7. Input data matches its recorded checksums.
 8. The data source is real exchange data, not a synthetic fixture.
+
+Implemented in `readiness.py` (stage 6) as checks in ten categories (data,
+calendar, universe, identity-corporate, distributions, costs-taxes,
+benchmark, ledger, execution, reproducibility). Each is PASS, BLOCKED,
+UNRESOLVED or NOT_APPLICABLE and mandatory or not; the run is READY only
+if every mandatory check is PASS or NOT_APPLICABLE. Beyond the list
+above it also requires the frozen strategy and criteria hashes, a clean
+git tree, every inventoried file present with its checksum, an official
+holiday list for every year of the window, category evidence knowable by
+the evaluation start, at least one ETF eligible on every criterion, and
+the ex-ante liquidity rule. Investor taxes, price limits and an
+off-container backup are reported as non-mandatory limitations.
 
 ## Point-in-time universe (stage 2)
 
@@ -166,6 +178,33 @@ through `pit.View`.
   ambiguous partial evidence, not a rate.
 - Investor-level taxes (capital gains, tax on distributions) are listed with
   what they depend on and are never computed; results are pre-tax.
+
+## Gate, metrics and runner (stage 6)
+
+- `readiness.py`: the gate above. `python3 india/backtest.py readiness`
+  writes `READINESS_REPORT.md` and `readiness_report.json` (committed).
+- `evaluate.py`: exact metrics from the broker journal: start and end
+  value, return net of known costs (labelled when any fee is unresolved),
+  CAGR only over at least 365 days, maximum drawdown over marks, volatility
+  only from at least 24 monthly returns, turnover, orders by outcome, fees
+  by component, time invested, stale and gap counts, and benchmark-relative
+  figures for benchmarks the gate found valid. Uninvested cash is the
+  zero-return control.
+- `backtest.py run`: the pre-registered experiment (`PROTOCOL.md`). It
+  refuses, printing BLOCKED - NO VALID PERFORMANCE RESULT, unless the gate
+  is READY before and after the market data is loaded, and it refuses
+  market data that did not come from the verified cache. It writes the
+  ledger, a separate seal anchor, orders, journal, results (headline,
+  pre-specified sensitivity runs, cost-matched NIFTYBEES buy-and-hold) and
+  a manifest (window, venue, git commit and dirty state, hashes of every
+  code and config file, protocol, strategy, criteria, cost schedule and
+  inventory, the inventory check, TRI file hashes, ledger head and anchor,
+  policies, Python version, readiness digest, output digest) under the
+  ignored `india/data/runs/`.
+- `backtest.py mechanics`: the same pipeline on synthetic data built in
+  code (made-up ETFs dated in the 2090s) and synthetic costs; every
+  result says MECHANICS ONLY - NOT A PERFORMANCE RESULT. It refuses cache
+  data. Two runs give the same output digest.
 
 ## Known limits
 

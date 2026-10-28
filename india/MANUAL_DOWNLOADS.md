@@ -8,6 +8,20 @@ exactly as downloaded: do not edit, rename columns or re-save a PDF.
 Use the day you downloaded the file for `--retrieved-on`, and the exact
 address you downloaded it from for `--url` / `--source-url`.
 
+## What each download unblocks
+
+The readiness gate (`python3 india/backtest.py readiness`) lists every
+mandatory check that is not passing. Downloads below map onto them:
+
+| gate check | needs |
+| --- | --- |
+| `benchmark-tri` | section 1 |
+| `identity-evidence`, `corporate-evidence` | section 2 (and the HDFC AMC notice in section 5) |
+| `official-calendar` | section 3, for every year 2022 to 2026 |
+| `distributions-evidence`, `eligible-candidates` | section 4 |
+| `category-evidence` | section 6 |
+| `cost-coverage`, `benchmark-niftybees` | section 5 plus broker and depository tariffs, each with effective dates |
+
 ## 1. NIFTY 50 Total Returns Index (benchmark; currently BLOCKED)
 
 - Official page: https://www.niftyindices.com/reports/historical-data
@@ -116,3 +130,15 @@ face-value change of HDFC Nifty ETF (hdfcfund.com refuses this environment).
 python3 india/evidence.py import FILE.pdf --url https://... --retrieved-on YYYY-MM-DD \
     --title "..." --publisher "..."
 ```
+
+## 6. Fund-category evidence dated before 2022 (universe)
+
+The only category evidence on record is AMFI's current NAVAll.txt, which is
+undated and therefore counts only from its retrieval date (2026-10-28). The
+point-in-time universe needs, for each candidate, a document dated on or
+before 2022-01-01 that names the index the ETF tracks: the scheme
+information document or key information memorandum in force then (from the
+AMC's site or SEBI's filings page), or an archived AMFI scheme list dated
+before 2022. Import each with `evidence.py import`. Note: today
+`universe.Evidence` reads category facts only from AMFI's list; a small
+code change is needed to read dated category records from these documents.

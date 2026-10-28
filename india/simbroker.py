@@ -52,7 +52,8 @@ the execution day's full traded value (not known at the open). The default
 is now the causally valid ex-ante rule above; the old rule survives only as
 the labelled ex-post sensitivity mode.
 
-Every result is MECHANICS ONLY until the stage 6 readiness gate exists.
+A raw broker result is always labelled MECHANICS ONLY. Only backtest.py, after the readiness gate
+classifies the evidence READY, may label a run a real-market result.
 """
 
 import decimal
@@ -68,7 +69,7 @@ import execution  # noqa: E402
 import portfolio as P  # noqa: E402
 import signals  # noqa: E402
 
-LABEL = "MECHANICS ONLY - NOT A PERFORMANCE RESULT (no readiness gate yet)"
+LABEL = "MECHANICS ONLY - NOT A PERFORMANCE RESULT (raw broker output; only backtest.py applies the readiness gate)"
 SKIP = ("official-holiday",)
 UNFILLABLE = ("gap", "invalid", "unobserved", "unreachable", "conflict", "official-session")
 
@@ -329,6 +330,19 @@ class Broker(object):
         self.portfolio.note({"type": "mark", "date": day, "value_paise": total, "flags": flags,
                              "gaps_since_previous_mark": gaps})
         self._last_mark = day
+
+    @property
+    def last_mark(self):
+        return self._last_mark
+
+    def mark_at(self, day):
+        """Value the portfolio on a later tradable session (the end of the window). No order is placed,
+        filled or settled; it is a valuation only, journalled like any other mark."""
+        if self._last_mark is not None and day < self._last_mark:
+            raise BrokerError("%s is before the last mark %s" % (day, self._last_mark))
+        if self._last_mark != day:
+            self._mark(day)
+        return self
 
     # ------------------------------------------------------------ results
 
