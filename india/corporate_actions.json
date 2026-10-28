@@ -1,0 +1,4 @@
+{
+  "about": "Confirmed corporate actions (unit splits, consolidations, mergers) with the official source for each. Empty until a fund-house or exchange notice is located and read. Price breaks found in the files stay unresolved until they match an entry here. Note: on the BSE files checked, PREVCLOSE was not restated on split ex-dates, so the price files alone cannot confirm a split.",
+  "actions": []
+}

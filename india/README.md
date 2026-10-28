@@ -17,7 +17,7 @@ which are unchanged.
   kept in the local cache (`india/data/`, ignored by git). Raw NSE/BSE files
   and large datasets are never committed.
 
-## What is here (Phase 1)
+## What is here (Phases 1 and 2)
 
 | file | job |
 | --- | --- |
@@ -25,6 +25,14 @@ which are unchanged.
 | `sources.py` | validates `sources.json`, builds URLs from templates with plain-token parameters only |
 | `fetch.py` | polite downloads into a SHA-256 content-addressed cache with an append-only manifest |
 | `tri.py` | imports a manually downloaded NIFTY 50 TRI CSV, validates it, records its checksum; reports BLOCKED until one is imported |
+| `bhav.py` | reads NSE/BSE bhavcopies (legacy and UDiFF layouts), checks every row's date against the day fetched, and samples files politely |
+| `calendar_in.py` | per-exchange calendar: observed sessions (files) kept apart from official holiday lists; a missing file is "no-file", never a holiday; no future dates predicted |
+| `secmaster.py` | symbol and ISIN history per listing, with observed change windows, file checksums as provenance, and conflicts; ISIN changes stay proposed until confirmed |
+| `etf.py` | finds candidate ETFs from AMFI scheme names and tests them against `etf_criteria.json` |
+| `etf_criteria.json` | the documented inclusion criteria; the liquidity threshold is left for the user to set |
+| `etf_candidates.json` | the 33 candidates found on 2026-10-28, with the checksums of the AMFI and BSE files used |
+| `identity_confirmations.json`, `corporate_actions.json` | sourced confirmations; empty until official notices are read |
+| `ETF_REVIEW.md` | the current verdict for every candidate |
 
 ```bash
 python3 india/sources.py check
@@ -32,6 +40,10 @@ python3 india/sources.py list --purpose prices
 python3 india/fetch.py get nse-bhavcopy-legacy --date 2018-01-02
 python3 india/fetch.py verify
 python3 india/tri.py status
+python3 india/bhav.py sample BSE --from 2018-01 --to 2026-10
+python3 india/calendar_in.py coverage BSE 2018-01-01 2026-10-28
+python3 india/secmaster.py history BSE 590103
+python3 india/etf.py evaluate
 python3 -m unittest discover -s tests -v
 ```
 
@@ -68,11 +80,20 @@ approximation is substituted for the official TRI.
 
 ## Known data facts (checked 2026-10-28)
 
-- NIFTYBEES closes: 1074.61 on 2018-01-02, 130.14 on 2020-01-02. A break of
-  about 10:1, consistent with a unit split, to be confirmed from the fund's
-  notice before any return is computed across it.
-- NIFTYBEES ISIN changed from INF732E01011 (2012, 2018) to INF204KB14I2
-  (2020). ISIN INF109K012R6 traded as ICICINIFTY in 2020 and NIFTYIETF in
-  2026. Neither symbol nor ISIN is a stable key over time.
+- NIFTYBEES (BSE 590103): close 1292.95 on 2019-12-18 and 129.90 on
+  2019-12-19, adjacent sessions. Its ISIN changed from INF732E01011 to
+  INF204KB14I2 between the same two sessions. BANKBEES (590106) shows the
+  same pattern on the same days. Both are consistent with a 10:1 unit split
+  and an ISIN change, and both stay unconfirmed until an official notice is
+  read.
+- BSE did not restate PREVCLOSE on those ex-dates, so the price files alone
+  cannot confirm a split.
+- One ETF can carry several names: ISIN INF109K012R6 was NIFTYIWIN,
+  ICICINIFTY and then NIFTYIETF on BSE. Neither symbol nor ISIN is a stable
+  key over time.
+- BSE switched bhavcopy layouts between 2024-07-01 and 2024-08-01.
+- The NSE archive refused connections on 2026-10-28 after serving files
+  earlier that day; BSE is the only venue with reachable history for now.
+- A bhavcopy lists only what traded that day: absence is not delisting.
 
 Education and tooling, not financial or tax advice.

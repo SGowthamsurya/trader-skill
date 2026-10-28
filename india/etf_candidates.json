@@ -1,0 +1,280 @@
+{
+  "about": "ETFs whose official AMFI scheme name places them in a study category, as listed on the venue's latest cached price file. Discovery only: inclusion is decided by etf.py evaluate.",
+  "venue": "BSE",
+  "price_file": {
+    "date": "2026-10-01",
+    "sha256": "4b31196430cbeb4cd7da07cfcb510aa152df0108f9c535620bfcf400cdab3eef",
+    "url": "https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_20261001_F_0000.CSV"
+  },
+  "amfi_file": {
+    "sha256": "72dce09fcc8bda34e6c2c49b72a257d3bf217a6e18ed84f47818181eb95e6799",
+    "url": "https://www.amfiindia.com/spages/NAVAll.txt",
+    "retrieved_at": "2026-10-28T11:34:58Z"
+  },
+  "candidates": [
+    {
+      "category": "bank",
+      "isin": "INF209KB17D5",
+      "exchange": "BSE",
+      "key": "542863",
+      "symbol": "ABSLBANETF",
+      "amfi_name": "ADITYA BIRLA SUN LIFE NIFTY BANK ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF740KA1RX3",
+      "exchange": "BSE",
+      "key": "543738",
+      "symbol": "BANKADD",
+      "amfi_name": "DSP Nifty Bank ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF204KB15I9",
+      "exchange": "BSE",
+      "key": "590106",
+      "symbol": "BANKBEES",
+      "amfi_name": "Nippon India ETF Nifty Bank BeES"
+    },
+    {
+      "category": "bank",
+      "isin": "INF789F1AUV1",
+      "exchange": "BSE",
+      "key": "543226",
+      "symbol": "BANKBETA",
+      "amfi_name": "UTI Nifty Bank ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF0QA701714",
+      "exchange": "BSE",
+      "key": "544093",
+      "symbol": "BANKBETF",
+      "amfi_name": "Bajaj Finserv Nifty Bank ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF769K01KR3",
+      "exchange": "BSE",
+      "key": "543944",
+      "symbol": "BANKETF",
+      "amfi_name": "Mirae Asset Nifty Bank ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF109KC15I8",
+      "exchange": "BSE",
+      "key": "542730",
+      "symbol": "BANKIETF",
+      "amfi_name": "ICICI Prudential Nifty Bank ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF174KA1ZB7",
+      "exchange": "BSE",
+      "key": "590136",
+      "symbol": "BANKNIFTY1",
+      "amfi_name": "Kotak Nifty Bank ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF251K01TL6",
+      "exchange": "BSE",
+      "key": "544196",
+      "symbol": "BBNPNBETF",
+      "amfi_name": "Baroda BNP Paribas Nifty Bank ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF179KC1HY0",
+      "exchange": "BSE",
+      "key": "543224",
+      "symbol": "HDFCNIFBAN",
+      "amfi_name": "HDFC NIFTY BANK ETF"
+    },
+    {
+      "category": "bank",
+      "isin": "INF200KA1580",
+      "exchange": "BSE",
+      "key": "590137",
+      "symbol": "SETFNIFBK",
+      "amfi_name": "SBI Nifty Bank ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF209KB19D1",
+      "exchange": "BSE",
+      "key": "543474",
+      "symbol": "BSLNIFTY",
+      "amfi_name": "Aditya Birla Sun Life Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF179KC1965",
+      "exchange": "BSE",
+      "key": "539516",
+      "symbol": "HDFCNIFTY",
+      "amfi_name": "HDFC NIFTY 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF767K01OS7",
+      "exchange": "BSE",
+      "key": "539480",
+      "symbol": "LICNETFN50",
+      "amfi_name": "LIC MF Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF247L01536",
+      "exchange": "BSE",
+      "key": "590115",
+      "symbol": "MOM50",
+      "amfi_name": "Motilal Oswal Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF174K014P6",
+      "exchange": "BSE",
+      "key": "537708",
+      "symbol": "NIFTY1",
+      "amfi_name": "Kotak Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF740KA1CL0",
+      "exchange": "BSE",
+      "key": "543440",
+      "symbol": "NIFTYADD",
+      "amfi_name": "DSP Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF204KB14I2",
+      "exchange": "BSE",
+      "key": "590103",
+      "symbol": "NIFTYBEES",
+      "amfi_name": "Nippon India ETF Nifty 50 BeES"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF789F1AZC0",
+      "exchange": "BSE",
+      "key": "539313",
+      "symbol": "NIFTYBETA",
+      "amfi_name": "UTI Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF0QA701722",
+      "exchange": "BSE",
+      "key": "544092",
+      "symbol": "NIFTYBETF",
+      "amfi_name": "Bajaj Finserv Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF0R8F01166",
+      "exchange": "BSE",
+      "key": "544586",
+      "symbol": "NIFTYCASE",
+      "amfi_name": "Zerodha Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF769K01EG9",
+      "exchange": "BSE",
+      "key": "542131",
+      "symbol": "NIFTYETF",
+      "amfi_name": "Mirae Asset Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF109K012R6",
+      "exchange": "BSE",
+      "key": "537007",
+      "symbol": "NIFTYIETF",
+      "amfi_name": "ICICI Prudential Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF22M001184",
+      "exchange": "BSE",
+      "key": "544873",
+      "symbol": "NIFTYJBLK",
+      "amfi_name": "JioBlackRock Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF082J01499",
+      "exchange": "BSE",
+      "key": "590110",
+      "symbol": "QNIFTY",
+      "amfi_name": "Quantum Nifty 50 ETF"
+    },
+    {
+      "category": "nifty50",
+      "isin": "INF200KA1FS1",
+      "exchange": "BSE",
+      "key": "590138",
+      "symbol": "SETFNIF50",
+      "amfi_name": "SBI Nifty 50 ETF"
+    },
+    {
+      "category": "niftynext50",
+      "isin": "INF209KB16D7",
+      "exchange": "BSE",
+      "key": "542230",
+      "symbol": "ABSLNN50ET",
+      "amfi_name": "Aditya Birla Sun Life Nifty Next 50 ETF"
+    },
+    {
+      "category": "niftynext50",
+      "isin": "INF754K01XF3",
+      "exchange": "BSE",
+      "key": "544761",
+      "symbol": "ENEXT50",
+      "amfi_name": "Edelweiss Nifty Next 50 ETF"
+    },
+    {
+      "category": "niftynext50",
+      "isin": "INF179KC1HS2",
+      "exchange": "BSE",
+      "key": "543570",
+      "symbol": "HDFCNEXT50",
+      "amfi_name": "HDFC NIFTY NEXT 50 ETF"
+    },
+    {
+      "category": "niftynext50",
+      "isin": "INF732E01045",
+      "exchange": "BSE",
+      "key": "590104",
+      "symbol": "JUNIORBEES",
+      "amfi_name": "Nippon India ETF Nifty Next 50 Junior BeES"
+    },
+    {
+      "category": "niftynext50",
+      "isin": "INF769K01FN2",
+      "exchange": "BSE",
+      "key": "542922",
+      "symbol": "NEXT50",
+      "amfi_name": "Mirae Asset Nifty Next 50 ETF"
+    },
+    {
+      "category": "niftynext50",
+      "isin": "INF740KA1XU7",
+      "exchange": "BSE",
+      "key": "544674",
+      "symbol": "NEXT50ADD",
+      "amfi_name": "DSP Nifty Next 50 ETF"
+    },
+    {
+      "category": "niftynext50",
+      "isin": "INF109KC1NS5",
+      "exchange": "BSE",
+      "key": "541809",
+      "symbol": "NEXT50IETF",
+      "amfi_name": "ICICI Prudential Nifty Next 50 ETF"
+    }
+  ]
+}

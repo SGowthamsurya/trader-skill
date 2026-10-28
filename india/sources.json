@@ -26,7 +26,7 @@
       "status": "partial",
       "checked_at": "2026-10-28",
       "evidence": "Zip archives returned for 2012-01-02 (1526 rows), 2018-01-02 (1856 rows) and 2020-01-02 (1956 rows); columns include SYMBOL, SERIES, CLOSE, TOTTRDQTY, ISIN. NIFTYBEES present in all three.",
-      "uncertainties": ["Later on 2026-10-28 (about 11:23 UTC) the server closed the connection without a response, to both curl and Python, for the 2018-01-02 file it had served earlier; the proxy logged no failure for this host. Possibly rate limiting after the Phase 0 checks. Retry gently before relying on it.", "The last date this format was published (before the UDiFF switch) is not verified.", "Redistribution terms not reviewed: keep the files in the local cache only."]
+      "uncertainties": ["One cautious retry through fetch.py at 2026-10-28T11:26:57Z (Phase 2) was again closed by the server without a response; no further requests were made to this host.", "Later on 2026-10-28 (about 11:23 UTC) the server closed the connection without a response, to both curl and Python, for the 2018-01-02 file it had served earlier; the proxy logged no failure for this host. Possibly rate limiting after the Phase 0 checks. Retry gently before relying on it.", "The last date this format was published (before the UDiFF switch) is not verified.", "Redistribution terms not reviewed: keep the files in the local cache only."]
     },
     {
       "id": "nse-bhavcopy-udiff",
@@ -39,7 +39,7 @@
       "status": "ok",
       "checked_at": "2026-10-28",
       "evidence": "Zip archive for 2026-10-27 with 3670 rows; columns include TckrSymb, SctySrs, ISIN, ClsPric, TtlTradgVol, TtlTrfVal, NewBrdLotQty. NIFTYBEES, SETFNIF50, HDFCNIFTY, NIFTYIETF present with board lot 1.",
-      "uncertainties": ["Later on 2026-10-28 (about 11:23 UTC) the server closed the connection without a response, to both curl and Python, for the 2018-01-02 file it had served earlier; the proxy logged no failure for this host. Possibly rate limiting after the Phase 0 checks. Retry gently before relying on it.", "The first date this format is available is not verified."]
+      "uncertainties": ["One cautious retry through fetch.py at 2026-10-28T11:26:57Z (Phase 2) was again closed by the server without a response; no further requests were made to this host.", "Later on 2026-10-28 (about 11:23 UTC) the server closed the connection without a response, to both curl and Python, for the 2018-01-02 file it had served earlier; the proxy logged no failure for this host. Possibly rate limiting after the Phase 0 checks. Retry gently before relying on it.", "The first date this format is available is not verified."]
     },
     {
       "id": "bse-bhavcopy-udiff",
@@ -51,8 +51,8 @@
       "expect": "csv",
       "status": "ok",
       "checked_at": "2026-10-28",
-      "evidence": "CSV for 2026-10-27 (856277 bytes) with ISIN, TckrSymb and OHLC columns.",
-      "uncertainties": ["The first date this format is available is not verified."]
+      "evidence": "CSV for 2026-10-27 (856277 bytes) with ISIN, TckrSymb and OHLC columns. Phase 2 (2026-10-28): verified files for every sampled session from 2024-08-01 to 2026-10-01; refused (HTML page) for sampled dates in 2018, where the legacy layout answered.",
+      "uncertainties": ["The exact first day of this layout lies between 2024-07-01 and 2024-08-01."]
     },
     {
       "id": "bse-bhavcopy-isin",
@@ -64,8 +64,8 @@
       "expect": "zip",
       "status": "partial",
       "checked_at": "2026-10-28",
-      "evidence": "Zip archive for 2018-01-02; the 2012-01-02 URL returned an HTML page with HTTP 200, not data.",
-      "uncertainties": ["Earliest available date is somewhere between 2012 and 2018."]
+      "evidence": "Zip archive for 2018-01-02; the 2012-01-02 URL returned an HTML page with HTTP 200, not data. Phase 2 (2026-10-28): files verified for every sampled session from 2018-01-01 to 2024-07-01; refused for 2024-08-01, when the UDiFF layout answered instead. PREVCLOSE was not restated on ETF unit-split ex-dates (for example NIFTYBEES 2019-12-19: PREVCLOSE 1292.95, close 129.90).",
+      "uncertainties": ["Earliest available date is somewhere between 2012 and 2018.", "The exact last day of this layout lies between 2024-07-01 and 2024-08-01.", "A file lists only instruments that traded that day; absence is not delisting."]
     },
     {
       "id": "niftyindices-close-all",

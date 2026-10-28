@@ -63,6 +63,11 @@ class Base(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def refusals(self):
+        recs = self.cache.records()
+        self.assertFalse([r for r in recs if r.get("ok")], "nothing may be cached as data")
+        return [(r["reason"], r["date"]) for r in recs]
+
     def fetcher(self, answers):
         net = FakeNet(answers)
         return fetch.Fetcher(self.doc, self.cache, opener=net, clock=self.clock, sleep=self.clock.sleep), net
@@ -99,13 +104,13 @@ class Fetching(Base):
         f, _ = self.fetcher({NSE_2018: {"body": HTML}})
         with self.assertRaisesRegex(fetch.FetchError, "HTML page"):
             f.get("nse-bhavcopy-legacy", "2018-01-02")
-        self.assertEqual(self.cache.records(), [])
+        self.assertEqual(self.refusals(), [("not-data", "2018-01-02")])
 
     def test_http_errors_are_reported_not_cached(self):
         f, _ = self.fetcher({NSE_2018: {"status": 403}})
         with self.assertRaisesRegex(fetch.FetchError, "HTTP 403"):
             f.get("nse-bhavcopy-legacy", "2018-01-02")
-        self.assertEqual(self.cache.records(), [])
+        self.assertEqual(self.refusals(), [("http", "2018-01-02")])
 
     def test_oversize_bodies_are_refused(self):
         self.doc["policy"]["max_bytes"] = 10
@@ -116,6 +121,9 @@ class Fetching(Base):
     def test_a_redirect_to_an_unregistered_host_is_refused(self):
         f, _ = self.fetcher({NSE_2018: {"body": a_zip(), "final": "https://evil.example.com/x.zip"}})
         with self.assertRaisesRegex(fetch.FetchError, "not a fetchable host"):
+            f.get("nse-bhavcopy-legacy", "2018-01-02")
+        self.assertEqual(self.refusals(), [("redirect", "2018-01-02")])
+        with self.assertRaisesRegex(fetch.FetchError, "not asking again"):
             f.get("nse-bhavcopy-legacy", "2018-01-02")
 
     def test_the_real_redirect_handler_checks_the_new_host(self):
@@ -146,6 +154,43 @@ class Fetching(Base):
         f.get("nse-bhavcopy-legacy", "2018-01-03")
         self.assertEqual(len(self.clock.slept), 1)
         self.assertAlmostEqual(self.clock.slept[0], 0.75)
+
+
+class Refusals(Base):
+    def test_a_refused_url_is_not_asked_again_without_retry(self):
+        f, net = self.fetcher({NSE_2018: {"status": 404}})
+        with self.assertRaises(fetch.FetchError):
+            f.get("nse-bhavcopy-legacy", "2018-01-02")
+        with self.assertRaisesRegex(fetch.FetchError, "not asking again"):
+            f.get("nse-bhavcopy-legacy", "2018-01-02")
+        self.assertEqual(len(net.calls), 1)
+        net.answers[NSE_2018] = {"body": a_zip()}
+        self.assertTrue(f.get("nse-bhavcopy-legacy", "2018-01-02", retry=True)["ok"])
+        self.assertEqual(len(net.calls), 2)
+        self.assertIsNone(f.refused(NSE_2018))
+
+    def test_a_network_failure_is_recorded_but_may_be_asked_again(self):
+        calls = []
+
+        def down(url, headers, timeout, max_bytes):
+            calls.append(url)
+            raise fetch.FetchError("could not reach %s" % url)
+        f = fetch.Fetcher(self.doc, self.cache, opener=down, clock=self.clock, sleep=self.clock.sleep)
+        for _ in range(2):
+            with self.assertRaises(fetch.FetchError):
+                f.get("nse-bhavcopy-legacy", "2018-01-02")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([r["reason"] for r in self.cache.records()], ["network", "network"])
+
+    def test_list_and_verify_handle_refusal_records(self):
+        f, _ = self.fetcher({NSE_2018: {"status": 404}})
+        with self.assertRaises(fetch.FetchError):
+            f.get("nse-bhavcopy-legacy", "2018-01-02")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(fetch.main(["--cache", self.cache.root, "list"]), 0)
+            self.assertEqual(fetch.main(["--cache", self.cache.root, "verify"]), 0)
+        self.assertIn("REFUSED http", out.getvalue())
 
 
 class CacheIntegrity(Base):

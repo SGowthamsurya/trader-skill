@@ -1,0 +1,17 @@
+{
+  "about": "What an ETF must show before it may enter the Indian equity study. Every criterion passes, fails, or is unresolved (not enough evidence yet). An ETF is ELIGIBLE only when every criterion passes. Thresholds marked proposed are data-quality defaults awaiting the user's approval; the liquidity threshold is left unset on purpose.",
+  "categories": {
+    "nifty50": "AMFI scheme name names the Nifty 50 index (not Next 50, not a factor or equal-weight variant, not an index fund or fund of funds)",
+    "niftynext50": "AMFI scheme name names the Nifty Next 50 index",
+    "bank": "AMFI scheme name names the Nifty Bank index (not PSU, private, top-10 or other bank indices)"
+  },
+  "window": {"start": "2018-01-01", "end": null, "end_note": "null means the last observed session of the venue"},
+  "venue": "BSE",
+  "venue_note": "The NSE archive refused connections on 2026-10-28, so BSE is the only venue with reachable history. BSE ETF volumes are far smaller than NSE's; liquidity measured on BSE does not describe NSE.",
+  "capital_inr": 3000,
+  "capital_note": "Simulated capital. An ETF whose single unit cost more than this on an observed day cannot be bought whole on that day.",
+  "start_tolerance_days": {"value": 10, "status": "proposed"},
+  "min_presence": {"value": 0.95, "status": "proposed", "note": "share of the venue's observed sessions in the window on which the ETF has a row (traded)"},
+  "break_ratio": {"value": 1.5, "status": "proposed", "note": "a close-to-close change beyond this factor between adjacent sessions is treated as a possible corporate action, not a market move"},
+  "liquidity": {"min_median_value_inr": null, "status": "awaiting user decision", "note": "median daily traded value on the venue; the threshold has not been chosen"}
+}
