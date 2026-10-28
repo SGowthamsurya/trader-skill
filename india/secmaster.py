@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Historical security master: who was who, when, and how we know.
 
-Built only from what the price files show. An instrument is followed on
+Built only from what the price files show (from_cache reads fund
+instruments and the identity of every key that was ever a fund; equity-only
+duplicates are out of scope). An instrument is followed on
 each exchange by its listing key (the BSE scrip code; the NSE symbol), and
 every key carries a history of (symbol, ISIN) identities, each with the
 first and last date it was observed and the SHA-256 of the files that show
@@ -98,7 +100,7 @@ class Master(object):
         self.days = {}        # (exchange, key) -> sorted list of (date, label, isin)
         self.by_isin = {}     # isin -> {(exchange, key)}
         self.conflicts = []
-        for sha, rows in sorted(files, key=lambda f: f[1][0]["date"]):
+        for sha, rows in sorted((f for f in files if f[1]), key=lambda f: f[1][0]["date"]):
             self._file(sha, rows)
         self._overlaps()
         self.events = self._events()
@@ -203,7 +205,7 @@ class Master(object):
 
 
 def from_cache(cache, venue=None, confirmations=CONFIRMATIONS):
-    files = [(r["sha256"], rows) for r, _, rows in bhav.observations(cache, venue)]
+    files = [(r["sha256"], rows) for r, _, rows in bhav.observations(cache, venue, funds_only=True)]
     return Master(files, read_confirmations(confirmations) if isinstance(confirmations, str) else confirmations)
 
 

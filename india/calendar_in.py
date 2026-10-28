@@ -184,8 +184,7 @@ class Calendar(object):
 
 
 def from_cache(cache, exchange):
-    files = {r["date"] if r.get("date") else rows[0]["date"]: r["sha256"]
-             for r, _, rows in bhav.observations(cache, exchange)}
+    files = {r["date"]: r["sha256"] for r, _, _ in bhav.observations(cache, exchange, funds_only=True)}
     attempts = [(r["date"], r["source"], r.get("reason"))
                 for r in cache.records()
                 if r.get("kind") == "fetch" and not r.get("ok") and r.get("date")

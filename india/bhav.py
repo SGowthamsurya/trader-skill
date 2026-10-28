@@ -35,6 +35,16 @@ have been made or --max-network-failures network failures happen in a row.
 A file that downloads but does not parse (wrong date, unknown layout, no
 rows) is recorded as invalid: an error, not a non-trading day.
 
+Reading every full-market file again for each report takes minutes, so a
+derived index is kept beside the cache (<cache>/derived/v1/), one JSON per
+raw file and named by that file's SHA-256, so it can never describe other
+bytes: the verified date, the layout, every fund row (ISIN starting INF) in
+full, and the listing key and ISIN of every row. observations(...,
+funds_only=True) reads it. Rows that only record a key's identity (a key
+that was a fund at some point, seen here with a non-fund ISIN) are marked
+identity_only and carry no prices, so a code reused between a share and an
+ETF still shows up as an ISIN change. Rebuild it by deleting the folder.
+
 Sampling skips Saturdays and Sundays to save requests. That is a choice
 about where to look, not a claim that the market was shut: calendar_in.py
 never treats a weekend as closed without an official record.
@@ -87,6 +97,7 @@ LAYOUTS = {
                       "trades": "TtlNbOfTxsExctd", "lot": "NewBrdLotQty"}},
 }
 NUMERIC = ("open", "high", "low", "close", "prev_close", "volume", "value", "trades", "lot")
+INDEX_VERSION = 1
 
 class BhavError(Exception):
     pass
@@ -135,14 +146,19 @@ def parse(data, want_date=None):
     lay = LAYOUTS[layout]
     dcol, dfmt = lay["date"]
     want = None if want_date is None else str(want_date)
+    seen_dates = {}  # every row of a file carries the same few date strings; parse each once
     rows = []
     for n, r in enumerate(rd, 2):
         if not any((v or "").strip() for v in r.values() if isinstance(v, str)):
             continue
-        try:
-            d = datetime.datetime.strptime(r[dcol].strip(), dfmt).date().isoformat()
-        except (ValueError, AttributeError):
-            raise BhavError("line %d: %s %r is not a date" % (n, dcol, r.get(dcol)))
+        raw = r.get(dcol)
+        d = seen_dates.get(raw)
+        if d is None:
+            try:
+                d = datetime.datetime.strptime(raw.strip(), dfmt).date().isoformat()
+            except (ValueError, AttributeError):
+                raise BhavError("line %d: %s %r is not a date" % (n, dcol, raw))
+            seen_dates[raw] = d
         if want and d != want:
             raise BhavError("line %d is dated %s, but this file was fetched for %s" % (n, d, want))
         rec = {"date": d}
@@ -164,19 +180,65 @@ def invalid_shas(records):
     return {r["sha256"] for r in records if r.get("kind") == "invalid" and r.get("sha256")}
 
 
-def observations(cache, venue=None, verify=True):
-    """[(record, layout, rows)] for every valid price file in the cache, oldest first."""
-    out = []
+def _key(row):
+    return row["code"] if row["exchange"] == "BSE" else row["symbol"]
+
+
+def index_path(cache, sha):
+    return os.path.join(cache.root, "derived", "v%d" % INDEX_VERSION, sha[:2], sha + ".json")
+
+
+def summary(cache, rec):
+    """The derived index entry for one valid price file, built from its bytes on first use."""
+    p = index_path(cache, rec["sha256"])
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as fh:
+            s = json.load(fh)
+        if s.get("v") == INDEX_VERSION and s.get("sha256") == rec["sha256"]:
+            return s
+    layout, rows = parse(cache.read(rec["sha256"]), rec.get("date"))
+    s = {"v": INDEX_VERSION, "sha256": rec["sha256"], "date": rows[0]["date"], "layout": layout, "rows": len(rows),
+         "funds": [x for x in rows if (x["isin"] or "").startswith("INF")],
+         "keys": [[x["exchange"], _key(x), x["series"], x["isin"]] for x in rows if x["isin"]]}
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(s, fh, separators=(",", ":"))
+    os.replace(tmp, p)
+    return s
+
+
+def _price_records(cache, venue):
     recs = cache.records()
     bad = invalid_shas(recs)
-    for r in recs:
-        if not r.get("ok") or r.get("source") not in SOURCE_VENUE or not r.get("sha256") or r["sha256"] in bad:
-            continue
-        if venue and SOURCE_VENUE[r["source"]] != venue:
-            continue
-        layout, rows = parse(cache.read(r["sha256"]), r.get("date") if verify else None)
-        out.append((r, layout, rows))
-    out.sort(key=lambda x: x[2][0]["date"])
+    return [r for r in recs if r.get("ok") and r.get("source") in SOURCE_VENUE and r.get("sha256")
+            and r["sha256"] not in bad and (not venue or SOURCE_VENUE[r["source"]] == venue)]
+
+
+def observations(cache, venue=None, verify=True, funds_only=False):
+    """[(record, layout, rows)] for every valid price file in the cache, oldest first.
+    The record carries the file's verified date. funds_only reads the derived
+    index: fund rows in full, plus identity-only rows for keys that were ever
+    a fund."""
+    out = []
+    if not funds_only:
+        for r in _price_records(cache, venue):
+            layout, rows = parse(cache.read(r["sha256"]), r.get("date") if verify else None)
+            out.append((dict(r, date=rows[0]["date"]), layout, rows))
+    else:
+        sums = [(r, summary(cache, r)) for r in _price_records(cache, venue)]
+        fund_keys = {(x["exchange"], _key(x)) for _, s in sums for x in s["funds"]}
+        for r, s in sums:
+            rows = list(s["funds"])
+            for ex, key, series, isin in s["keys"]:
+                if (ex, key) in fund_keys and not isin.startswith("INF"):
+                    rows.append({"date": s["date"], "exchange": ex, "code": key if ex == "BSE" else None,
+                                 "symbol": key if ex == "NSE" else None, "series": series, "name": None,
+                                 "isin": isin, "identity_only": True,
+                                 "open": None, "high": None, "low": None, "close": None, "prev_close": None,
+                                 "volume": None, "value": None, "trades": None, "lot": None})
+            out.append((dict(r, date=s["date"]), s["layout"], rows))
+    out.sort(key=lambda x: x[0]["date"])
     return out
 
 def weekdays(start, end):
@@ -317,7 +379,7 @@ def main(argv=None):
     try:
         if a.cmd == "show":
             for r, layout, rows in observations(cache, a.venue):
-                if rows[0]["date"] != a.date:
+                if r["date"] != a.date:
                     continue
                 for x in rows:
                     if not a.isin or x["isin"] in a.isin:

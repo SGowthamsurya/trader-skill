@@ -161,7 +161,7 @@ def discover(cache, venue):
     if not a:
         raise EtfError("no AMFI NAV file cached; run: fetch.py get amfi-nav-latest")
     names = amfi_names(cache.read(a["sha256"]).decode("utf-8", "replace"))
-    obs = bhav.observations(cache, venue)
+    obs = bhav.observations(cache, venue, funds_only=True)
     if not obs:
         raise EtfError("no %s price files cached" % venue)
     rec, _, rows = obs[-1]
@@ -174,7 +174,7 @@ def discover(cache, venue):
     out.sort(key=lambda c: (c["category"], c["symbol"]))
     return {"about": "ETFs whose official AMFI scheme name places them in a study category, as listed on the "
                      "venue's latest cached price file. Discovery only: inclusion is decided by etf.py evaluate.",
-            "venue": venue, "price_file": {"date": rows[0]["date"], "sha256": rec["sha256"], "url": rec["url"]},
+            "venue": venue, "price_file": {"date": rec["date"], "sha256": rec["sha256"], "url": rec["url"]},
             "amfi_file": {"sha256": a["sha256"], "url": a["url"], "retrieved_at": a["retrieved_at"]},
             "candidates": out}
 
@@ -284,12 +284,13 @@ def daily_values(sessions, mine):
 
 def liquidity_table(cache, crit, cands, thresholds):
     venue = crit["venue"]
-    obs = bhav.observations(cache, venue)
+    obs = bhav.observations(cache, venue, funds_only=True)
     cal = calendar_in.from_cache(cache, venue)
     end = crit["window"]["end"] or (cal.last_observed.isoformat() if cal.last_observed else crit["window"]["start"])
     sessions = [d.isoformat() for d in cal.sessions(crit["window"]["start"], end)]
-    rows_by_date = {rows[0]["date"]: {secmaster.key_of(x): x for x in rows if x["exchange"] == venue}
-                    for _, _, rows in obs}
+    rows_by_date = {r["date"]: {secmaster.key_of(x): x for x in rows
+                                if x["exchange"] == venue and not x.get("identity_only")}
+                    for r, _, rows in obs}
     out = []
     for c in cands:
         if c["exchange"] != venue:
@@ -305,14 +306,15 @@ def liquidity_table(cache, crit, cands, thresholds):
 
 def evaluate_all(cache, crit, cands, actions, confirmations=secmaster.CONFIRMATIONS):
     venue = crit["venue"]
-    obs = bhav.observations(cache, venue)
+    obs = bhav.observations(cache, venue, funds_only=True)
     cal = calendar_in.from_cache(cache, venue)
     master = secmaster.Master([(r["sha256"], rows) for r, _, rows in obs],
                               secmaster.read_confirmations(confirmations) if isinstance(confirmations, str)
                               else confirmations)
     rows_by_date = {}
-    for _, _, rows in obs:
-        rows_by_date[rows[0]["date"]] = {secmaster.key_of(x): x for x in rows if x["exchange"] == venue}
+    for r, _, rows in obs:
+        rows_by_date[r["date"]] = {secmaster.key_of(x): x for x in rows
+                                   if x["exchange"] == venue and not x.get("identity_only")}
     end = crit["window"]["end"] or (cal.last_observed.isoformat() if cal.last_observed else crit["window"]["start"])
     out = []
     for c in cands:

@@ -182,5 +182,62 @@ class Collector(unittest.TestCase):
         self.assertEqual(len([r for r in self.cache.records() if r.get("kind") == "invalid"]), 1)
 
 
+class DerivedIndex(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cache = fetch.Cache(os.path.join(self.tmp.name, "c"))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def put(self, day, rows):
+        return fx.put_file(self.cache, "bse-bhavcopy-isin", day, fx.bse_legacy(day, rows))
+
+    def test_built_once_then_read_without_parsing(self):
+        rec = self.put("2024-01-02", ROWS + [("500001", "SYNTHCO", "INE000SYN099", 50.0, 50.0, 1, 50.0)])
+        s = bhav.summary(self.cache, rec)
+        self.assertEqual((s["date"], s["layout"], s["rows"], len(s["funds"]), len(s["keys"])),
+                         ("2024-01-02", "bse-legacy", 2, 1, 2))
+        self.assertTrue(os.path.exists(bhav.index_path(self.cache, rec["sha256"])))
+        real = bhav.parse
+        bhav.parse = lambda *a, **k: self.fail("the index should have been used")
+        try:
+            self.assertEqual(bhav.summary(self.cache, rec)["funds"], s["funds"])
+        finally:
+            bhav.parse = real
+
+    def test_funds_only_matches_a_full_parse_for_fund_rows(self):
+        self.put("2024-01-02", ROWS + [("500001", "SYNTHCO", "INE000SYN099", 50.0, 50.0, 1, 50.0)])
+        full = bhav.observations(self.cache, "BSE")[0][2]
+        fast = bhav.observations(self.cache, "BSE", funds_only=True)[0][2]
+        self.assertEqual([x for x in full if x["isin"].startswith("INF")], fast)
+
+    def test_a_code_reused_from_a_share_to_an_etf_stays_visible(self):
+        import secmaster
+        self.put("2024-01-02", [("590901", "OLDCO", "INE000SYN099", 50.0, 50.0, 1, 50.0)])
+        self.put("2024-01-03", ROWS)
+        obs = bhav.observations(self.cache, "BSE", funds_only=True)
+        self.assertTrue(obs[0][2][0]["identity_only"])
+        self.assertIsNone(obs[0][2][0]["close"])
+        m = secmaster.from_cache(self.cache, confirmations=[])
+        e = [x for x in m.events if x["type"] == "isin-change"]
+        self.assertEqual((e[0]["from_isin"], e[0]["to_isin"]), ("INE000SYN099", "INF000SYN011"))
+
+    def test_identity_rows_are_never_prices(self):
+        import etf
+        self.put("2024-01-02", [("590901", "OLDCO", "INE000SYN099", 50.0, 50.0, 1, 50.0)])
+        self.put("2024-01-03", ROWS)
+        crit = {"window": {"start": "2024-01-02", "end": None}, "venue": "BSE", "capital_inr": 3000}
+        cand = {"category": "nifty50", "isin": "INF000SYN011", "exchange": "BSE", "key": "590901", "symbol": "S",
+                "amfi_name": "x"}
+        _, rows = etf.liquidity_table(self.cache, crit, [cand], [1])
+        self.assertEqual((rows[0]["first"], rows[0]["sessions"]), ("2024-01-03", 1))
+
+    def test_a_file_without_funds_still_counts_as_a_session(self):
+        import calendar_in
+        self.put("2024-01-02", [("500001", "SYNTHCO", "INE000SYN099", 50.0, 50.0, 1, 50.0)])
+        self.assertEqual(calendar_in.from_cache(self.cache, "BSE").status("2024-01-02"), "trading")
+
+
 if __name__ == "__main__":
     unittest.main()
