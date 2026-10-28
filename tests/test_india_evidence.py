@@ -43,6 +43,8 @@ class Evidence(unittest.TestCase):
                 evidence.import_document(good, self.cache, **args)
         with self.assertRaisesRegex(evidence.EvidenceError, "web page"):
             evidence.import_document(self.file(b"<!DOCTYPE html><html></html>"), self.cache, URL, "2026-10-28", "t", "p")
+        with self.assertRaisesRegex(evidence.EvidenceError, "does not start with %PDF-"):
+            evidence.import_document(self.file(b"Access Denied", "x.pdf"), self.cache, URL, "2026-10-28", "t", "p")
         with self.assertRaisesRegex(evidence.EvidenceError, "refusing"):
             evidence.import_document(self.file(b""), self.cache, URL, "2026-10-28", "t", "p")
         self.assertEqual(self.cache.records(), [])

@@ -131,5 +131,50 @@ class Official(unittest.TestCase):
         self.assertEqual(cal.from_cache(self.cache, "BSE").status("2024-01-25"), "unobserved")
 
 
+NOTICE = """<html><body><div>NOTICES Notice No. 20991212-7 Notice Date 12 Dec 2098 Subject Trading Holidays for the
+Calendar Year 2099 for Equity, Equity Derivatives and SLB Segments Content Trading Members are hereby informed that the
+Exchange shall observe the following Trading Holidays during the Calendar Year 2099 for the Equity Segments.
+<table><tr><td>1</td><td>Synthetic Day</td><td>February 26,2099</td><td>Thursday</td></tr>
+<tr><td>2</td><td>Lamp Festival</td><td>October 21, 2099</td><td>Wednesday</td></tr></table>
+Following Holidays are Falling on Saturday / Sunday
+<table><tr><td>1</td><td>Weekend Day</td><td>January 25,2099</td><td>Sunday</td></tr></table>
+*Muhurat Trading will be conducted on Wednesday, October 21, 2099. For and on behalf of BSE Ltd.</div></body></html>"""
+
+
+class BseNotice(unittest.TestCase):
+    def test_dates_and_a_muhurat_session_are_read_from_the_text(self):
+        number, year, rows = cal.parse_bse_holiday_notice(NOTICE)
+        self.assertEqual((number, year), ("20991212-7", 2099))
+        self.assertEqual([(d.isoformat(), t) for d, t, _ in rows],
+                         [("2099-01-25", "holiday"), ("2099-02-26", "holiday"), ("2099-10-21", "session")])
+
+    def test_other_pages_and_bad_dates_are_refused(self):
+        with self.assertRaisesRegex(cal.CalendarError, "not a BSE trading-holiday notice"):
+            cal.parse_bse_holiday_notice("<html>Notice No. 20991212-7 Subject Circuit filters</html>")
+        with self.assertRaisesRegex(cal.CalendarError, "outside the notice's year"):
+            cal.parse_bse_holiday_notice(NOTICE.replace("February 26,2099", "February 26,2098"))
+        with self.assertRaisesRegex(cal.CalendarError, "appears twice"):
+            cal.parse_bse_holiday_notice(NOTICE.replace("October 21, 2099", "February 26,2099"))
+
+    def test_import_through_the_fetcher(self):
+        import sources as src
+        with tempfile.TemporaryDirectory() as d:
+            cache = fetch.Cache(os.path.join(d, "c"))
+            doc = src.read()
+            url = src.render(src.get(doc, "bse-notice"), {"NOTICE": "20991212-7"})
+            f = fetch.Fetcher(doc, cache, opener=lambda u, h, t, m: {
+                "status": 200, "url": u, "content_type": "text/html", "body": NOTICE.encode()},
+                clock=lambda: 0.0, sleep=lambda s: None)
+            rec = cal.import_bse_notice(f, "20991212-7")
+            self.assertEqual((rec["source_url"], rec["rows"], rec["year"]), (url, 3, 2099))
+            c = cal.from_cache(cache, "BSE")
+            self.assertEqual(c.status("2099-02-26"), "official-holiday")
+            self.assertEqual(c.status("2099-10-21"), "official-session")
+            with self.assertRaisesRegex(cal.CalendarError, "page is notice"):
+                cal.import_bse_notice(fetch.Fetcher(doc, cache, opener=lambda u, h, t, m: {
+                    "status": 200, "url": u, "content_type": "", "body": NOTICE.encode()},
+                    clock=lambda: 0.0, sleep=lambda s: None), "20991212-8")
+
+
 if __name__ == "__main__":
     unittest.main()

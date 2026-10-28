@@ -20,6 +20,14 @@ DOC = {"title": "Synthetic notice", "url": "https://example.org/notice.pdf", "re
        "sha256": "0" * 64}
 
 
+def reviewed(**kw):
+    a = {"id": "synthetic-distributions", "exchange": "BSE", "key": "590901", "type": "distributions-reviewed",
+         "verification": "verified", "documents": [DOC], "covers_from": "2024-01-01", "covers_to": "2099-12-31",
+         "distributions": []}
+    a.update(kw)
+    return a
+
+
 def action(**kw):
     a = {"id": "synthetic-split", "exchange": "BSE", "key": "590901", "type": "unit-split", "units_multiplier": 10,
          "record_date": None, "ex_date": None, "verification": "verified", "documents": [DOC]}
@@ -46,15 +54,55 @@ class Evaluate(unittest.TestCase):
             rows = rows + extra(d) + [("500001", "SYNTHCO", "INE000SYN099", 50.0, 50.0, 1, 50.0)]
             fx.put_file(self.cache, "bse-bhavcopy-isin", d, fx.bse_legacy(d, rows))
 
-    def run_(self, crit=CRIT, cand=CAND, actions=(), confirmations=()):
-        end, res = etf.evaluate_all(self.cache, crit, [cand], list(actions), list(confirmations))
+    def run_(self, crit=CRIT, cand=CAND, actions=(), confirmations=(), distributions=True):
+        acts = list(actions) + ([reviewed()] if distributions else [])
+        end, res = etf.evaluate_all(self.cache, crit, [cand], acts, list(confirmations))
         return res[0]["verdict"], {k: v[0] for k, v in res[0]["criteria"].items()}, res[0]["criteria"]
+
+    def test_no_break_is_not_presented_as_no_corporate_action(self):
+        self.build()
+        why = self.run_()[2]
+        self.assertIn("does not show that no corporate action occurred", why["corporate"][1])
+
+    def test_a_documented_gap_keeps_the_history_complete_and_is_named(self):
+        self.build()
+        sha = fx.put_file(self.cache, "bse-bhavcopy-isin", "2024-01-15",
+                          fx.bse_legacy("2024-01-16", [("590901", "SYNBEES", A, 100.0, 100.0, 1, 1.0)]))["sha256"]
+        self.cache.note({"kind": "invalid", "ok": False, "source": "bse-bhavcopy-isin", "url": "https://x/i",
+                         "date": "2024-01-15", "sha256": sha, "detail": "synthetic"})
+        gaps = os.path.join(self.tmp.name, "gaps.json")
+        with open(gaps, "w") as fh:
+            json.dump({"gaps": [{"venue": "BSE", "date": "2024-01-15", "sha256": sha, "reason": "synthetic",
+                                 "status": "unresolved", "handling": "excluded"}]}, fh)
+        import calendar_in
+        real = calendar_in.GAPS
+        calendar_in.GAPS = gaps
+        try:
+            crit = dict(CRIT, window={"start": "2024-01-01", "end": "2024-01-15"})
+            res = etf.evaluate_all(self.cache, crit, [CAND], [], [])[1][0]["criteria"]
+        finally:
+            calendar_in.GAPS = real
+        self.assertEqual(res["complete"][0], "pass")
+        self.assertIn("1 documented data gaps excluded from signals and trades (2024-01-15)", res["complete"][1])
 
     def test_a_clean_complete_history_is_eligible(self):
         self.build(skip=("2024-01-10",))
         verdict, out, _ = self.run_()
         self.assertEqual(verdict, "ELIGIBLE")
         self.assertEqual(set(out.values()), {"pass"})
+
+    def test_unreviewed_distributions_leave_it_insufficient(self):
+        self.build(skip=("2024-01-10",))
+        verdict, out, why = self.run_(distributions=False)
+        self.assertEqual((verdict, out["distributions"]), ("INSUFFICIENT DATA", "unresolved"))
+        self.assertIn("cannot show that no distribution occurred", why["distributions"][1])
+
+    def test_a_review_must_cover_the_whole_window_and_be_verified(self):
+        self.build(skip=("2024-01-10",))
+        for bad in (reviewed(covers_from="2024-01-05"), reviewed(covers_to="2024-01-05"),
+                    reviewed(verification="unverified"), reviewed(key="590902")):
+            out = self.run_(actions=[bad], distributions=False)[1]
+            self.assertEqual(out["distributions"], "unresolved", bad)
 
     def test_no_liquidity_threshold_means_insufficient_data(self):
         self.build()
@@ -162,10 +210,16 @@ class Liquidity(unittest.TestCase):
         self.assertEqual(got, {"SYNBEES": {300000: True, 1000000: False}, "THIN": {300000: False, 1000000: False}})
         self.assertAlmostEqual([r for r in rows if r["candidate"]["symbol"] == "SYNBEES"][0]["capital_share"], 0.0075)
 
-    def test_the_proposed_threshold_is_not_applied_until_approved(self):
-        crit = etf.read_json(etf.CRITERIA, "criteria")
-        self.assertEqual(crit["liquidity"]["proposed_value"], 300000)
-        self.assertIsNone(crit["liquidity"]["min_median_value_inr"])
+    def test_the_table_reports_fillability_of_a_full_capital_order(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache = fetch.Cache(d)
+            for i, day in enumerate(DAYS):
+                value = 100000.0 if i % 2 else 50000.0   # 3,000 is 3% of 100,000 but 6% of 50,000
+                fx.put_file(cache, "bse-bhavcopy-isin", day, fx.bse_legacy(day, [
+                    ("590901", "SYNBEES", A, 100.0, 100.0, 100, value)]))
+            crit = dict(CRIT, execution={"max_share_of_day_value": 0.05})
+            _, rows = etf.liquidity_table(cache, crit, [CAND], [1])
+        self.assertAlmostEqual(rows[0]["fillable_capital"], 0.5)
 
 
 class Discovery(unittest.TestCase):
@@ -201,9 +255,12 @@ class Discovery(unittest.TestCase):
 
 
 class ShippedFiles(unittest.TestCase):
-    def test_criteria_leave_the_liquidity_threshold_to_the_user(self):
+    def test_criteria_hold_the_values_the_user_approved(self):
+        # changing either value needs the user's approval; this test makes a silent change visible
         crit = etf.read_json(etf.CRITERIA, "criteria")
-        self.assertIsNone(crit["liquidity"]["min_median_value_inr"])
+        self.assertEqual(crit["liquidity"]["min_median_value_inr"], 300000)
+        self.assertIn("approved by the user", crit["liquidity"]["status"])
+        self.assertEqual(crit["execution"]["max_share_of_day_value"], 0.05)
         self.assertEqual(crit["capital_inr"], 3000)
         self.assertEqual(crit["window"]["start"], "2018-01-01")
 
@@ -234,7 +291,10 @@ class ShippedFiles(unittest.TestCase):
                              (action(ex_date="2024-01-09", units_multiplier=None), "units multiplier"),
                              (action(ex_date="2024-01-09", documents=[]), "cites a document"),
                              (action(ex_date="2024-01-09", documents=[dict(DOC, sha256="abc")]), "sha256"),
-                             ({"id": "x"}, "has no exchange")):
+                             ({"id": "x"}, "has no exchange"),
+                             (action(type="dividend", ex_date="2024-01-09"), "type must be one of"),
+                             ({k: v for k, v in reviewed().items()
+                                                                       if k != "covers_to"}, "has no covers_to")):
                 with open(p, "w") as fh:
                     json.dump({"actions": [bad]}, fh)
                 with self.assertRaisesRegex(etf.EtfError, why):
@@ -245,7 +305,9 @@ class ShippedFiles(unittest.TestCase):
             text = fh.read()
         self.assertIn("(BSE, 2018-01-01", text)
         self.assertIn("Not financial advice", text)
-        self.assertNotIn("| ELIGIBLE |", text)
+        self.assertIn("**ELIGIBLE** (every criterion passes): none", text)
+        self.assertIn("does not show that no event occurred", text)
+        self.assertIn("## Liquidity and execution", text)
 
 
 if __name__ == "__main__":

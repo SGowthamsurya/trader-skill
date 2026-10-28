@@ -1,0 +1,25 @@
+{
+  "about": "Exchange sessions whose published price file is unusable. Each gap is unresolved: no price exists for it in this study, none is interpolated or invented, and the corrupt file is kept in the local cache under the checksum below for forensic review, never read as market data. Handling 'excluded' means no signal is generated and no trade is made on that session, and any valuation or return that spans it is flagged (see india/marks.py).",
+  "gaps": [
+    {
+      "venue": "BSE",
+      "date": "2022-02-07",
+      "source": "bse-bhavcopy-isin",
+      "url": "https://www.bseindia.com/download/BhavCopy/Equity/EQ_ISINCODE_070222.ZIP",
+      "sha256": "4cee2b5cc799dae4cdd2ba032a4c14e28d0d76e64bd77bb48a6a39e58e04d0cf",
+      "reason": "Published file is corrupt: line 1796 joins two rows mid-field (a truncated ISIN followed by the next row). The zip CRC check passed, so the bytes are as published, not damaged in transfer. The UDiFF layout was refused for this date.",
+      "status": "unresolved",
+      "handling": "excluded"
+    },
+    {
+      "venue": "BSE",
+      "date": "2022-07-15",
+      "source": "bse-bhavcopy-isin",
+      "url": "https://www.bseindia.com/download/BhavCopy/Equity/EQ_ISINCODE_150722.ZIP",
+      "sha256": "e5d7a95008e4ea4ba006b88b6e231f1463b835620d3fa0ec124cff9368ed1930",
+      "reason": "Published file is corrupt: line 1821 joins two rows mid-field. The zip CRC check passed. The UDiFF layout was refused for this date.",
+      "status": "unresolved",
+      "handling": "excluded"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ came from, when, and its SHA-256, and refuses a file that fails validation.
 Until a valid file is imported, TRI benchmarking is BLOCKED. Nothing here
 estimates a TRI from a price index and dividend yields.
 
-    python3 tri.py status
+    python3 tri.py status --need-from 2018-01-01 --need-to 2026-10-27 --against-sessions BSE
     python3 tri.py validate ~/Downloads/NIFTY50_TRI.csv
     python3 tri.py import ~/Downloads/NIFTY50_TRI.csv \\
         --source-url https://www.niftyindices.com/reports/historical-data \\
@@ -35,6 +35,11 @@ Warnings are reported and recorded but do not refuse the file:
 
 The thresholds are data-sanity checks for a broken file, not claims about
 how the index behaves.
+
+Several files may be imported (if the download page limits the date range,
+import each range). They are merged by date. The same file imported twice
+counts once; two files that give different values for one date make TRI
+benchmarking BLOCKED until the wrong file is identified.
 """
 
 import argparse
@@ -193,33 +198,76 @@ def import_file(path, cache, source_url, retrieved_on, **opts):
                             "validation": summary})
 
 
+def _merged(cache):
+    """(files, {date: value}) over every valid import, or TriError."""
+    files, seen, merged = [], set(), {}
+    for rec in cache.records():
+        if rec.get("source") != SOURCE_ID or rec.get("kind") != "manual-import" or not rec.get("ok"):
+            continue
+        if rec["sha256"] in seen:
+            continue
+        seen.add(rec["sha256"])
+        try:
+            text = cache.read(rec["sha256"]).decode("utf-8-sig")
+        except fetch.FetchError as e:
+            raise TriError("the imported file %s failed its checksum: %s" % (rec.get("filename"), e))
+        v = rec["validation"]
+        for d, x in validate_text(text, date_col=v["date_col"], value_col=v["value_col"])["series"]:
+            if d in merged and abs(merged[d] - x) > 1e-9 * max(abs(x), 1.0):
+                raise TriError("imported files disagree on %s (%s vs %s)" % (d, merged[d], x))
+            merged[d] = x
+        files.append(rec)
+    return files, merged
+
+
 def status(cache):
-    """('BLOCKED', why) or ('AVAILABLE', record), re-checking the stored file."""
-    rec = cache.latest(source=SOURCE_ID, kind="manual-import", ok=True)
-    if not rec:
-        return "BLOCKED", "no NIFTY 50 TRI file has been imported; download it and run tri.py import"
+    """('BLOCKED', why) or ('AVAILABLE', summary of the merged imports), re-checking every stored file."""
     try:
-        cache.read(rec["sha256"])
-    except fetch.FetchError as e:
-        return "BLOCKED", "the imported TRI file failed its checksum: %s" % e
-    return "AVAILABLE", rec
+        files, merged = _merged(cache)
+    except TriError as e:
+        return "BLOCKED", str(e)
+    if not files:
+        return "BLOCKED", "no NIFTY 50 TRI file has been imported; download it and run tri.py import"
+    days = sorted(merged)
+    return "AVAILABLE", {"files": files, "rows": len(days), "first": days[0], "last": days[-1]}
+
+
+def coverage(series_dates, need_from, need_to, sessions=None, tolerance_days=None):
+    """Plain findings on how the merged series covers the required window."""
+    tol = DEFAULTS["max_gap_days"] if tolerance_days is None else tolerance_days
+    out = []
+    first, last = min(series_dates), max(series_dates)
+    if need_from and (datetime.date.fromisoformat(first) - datetime.date.fromisoformat(need_from)).days > tol:
+        out.append("starts %s, after the required %s" % (first, need_from))
+    if need_to and last < need_to:
+        out.append("ends %s, before the required %s" % (last, need_to))
+    if sessions:
+        have = set(series_dates)
+        missing = [d for d in sessions if (not need_from or d >= need_from) and (not need_to or d <= need_to)
+                   and first <= d <= last and d not in have]
+        if missing:
+            out.append("%d exchange sessions inside the covered range have no TRI value (first: %s)"
+                       % (len(missing), ", ".join(missing[:5])))
+    return out
 
 
 def load_series(cache):
-    """The imported TRI as [(date, value)], oldest first. TriError while BLOCKED."""
-    st, rec = status(cache)
+    """The merged TRI as [(date, value)], oldest first. TriError while BLOCKED."""
+    st, info = status(cache)
     if st != "AVAILABLE":
-        raise TriError("TRI benchmarking is BLOCKED: %s" % rec)
-    v = rec["validation"]
-    text = cache.read(rec["sha256"]).decode("utf-8-sig")
-    return validate_text(text, date_col=v["date_col"], value_col=v["value_col"])["series"]
+        raise TriError("TRI benchmarking is BLOCKED: %s" % info)
+    return sorted(_merged(cache)[1].items())
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Import and validate the NIFTY 50 TRI history.")
     ap.add_argument("--cache", default=fetch.DEFAULT_CACHE)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("status")
+    ps = sub.add_parser("status")
+    ps.add_argument("--need-from", default=DEFAULTS["want_from"])
+    ps.add_argument("--need-to")
+    ps.add_argument("--against-sessions", choices=("BSE", "NSE"),
+                    help="also list exchange sessions (from the price files) with no TRI value")
     for name in ("validate", "import"):
         p = sub.add_parser(name)
         p.add_argument("file")
@@ -235,15 +283,26 @@ def main(argv=None):
     cache = fetch.Cache(a.cache)
     try:
         if a.cmd == "status":
-            st, rec = status(cache)
+            st, info = status(cache)
             if st == "BLOCKED":
-                print("TRI benchmarking: BLOCKED. %s" % rec)
+                print("TRI benchmarking: BLOCKED. %s" % info)
                 return 1
-            v = rec["validation"]
-            print("TRI benchmarking: AVAILABLE. %s, %d rows %s to %s, sha256 %s, retrieved %s from %s"
-                  % (rec["filename"], v["rows"], v["first"], v["last"], rec["sha256"], rec["retrieved_on"],
-                     rec["source_url"]))
-            return 0
+            print("TRI benchmarking: AVAILABLE. %d rows %s to %s from %d file(s):"
+                  % (info["rows"], info["first"], info["last"], len(info["files"])))
+            for rec in info["files"]:
+                print("  %s sha256 %s, retrieved %s from %s" % (rec["filename"], rec["sha256"], rec["retrieved_on"],
+                                                               rec["source_url"]))
+            sessions = None
+            if a.against_sessions:
+                import calendar_in
+                cal = calendar_in.from_cache(cache, a.against_sessions)
+                sessions = [d.isoformat() for d in cal.sessions(info["first"], info["last"])]
+            gaps = coverage([d for d, _ in load_series(cache)], a.need_from, a.need_to, sessions)
+            for g in gaps:
+                print("COVERAGE " + g)
+            if not gaps:
+                print("Coverage: the required window is covered.")
+            return 0 if not gaps else 2
         opts = {"date_col": a.date_col, "value_col": a.value_col, "max_gap_days": a.max_gap_days,
                 "max_move": a.max_move, "want_from": a.want_from}
         if a.cmd == "validate":

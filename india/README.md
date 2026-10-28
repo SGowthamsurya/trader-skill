@@ -17,7 +17,7 @@ which are unchanged.
   kept in the local cache (`india/data/`, ignored by git). Raw NSE/BSE files
   and large datasets are never committed.
 
-## What is here (Phases 1, 2 and 2.1)
+## What is here (Phases 1 to 2.2)
 
 | file | job |
 | --- | --- |
@@ -34,6 +34,10 @@ which are unchanged.
 | `identity_confirmations.json`, `corporate_actions.json` | identity links and corporate actions, each with its documents and a verification level |
 | `evidence.py` | imports official documents (notices, circulars, holiday lists, Acts) with URL, retrieval date and SHA-256, and checks that every cited document is present |
 | `cost_tax_sources.json` | where each cost and tax component must be verified, split statutory / regulatory / exchange / depository / broker; no values |
+| `data_gaps.json` | sessions whose published price file is corrupt: unresolved, excluded, checksum kept for forensic review |
+| `marks.py` | valuation rules for any day, including gaps (no later price, no interpolation, flags) |
+| `execution.py` | whether a simulated order could fill: valid session, a verified trade in the ETF, at most 5% of its traded value |
+| `MANUAL_DOWNLOADS.md` | the documents only a person can fetch here, with exact pages, formats, ranges and import commands |
 | `ETF_REVIEW.md` | the current verdict for every candidate |
 
 ```bash
@@ -74,6 +78,38 @@ The TRI history is not available for automated download. To unblock it:
 The import stores the file in the local cache only. No dividend-yield
 approximation is substituted for the official TRI.
 
+## Data gaps and valuation (approved 2026-10-28)
+
+Two BSE sessions, 2022-02-07 and 2022-07-15, have published files that are
+corrupt (rows spliced mid-field). They are listed in `data_gaps.json` with
+the checksum of the corrupt file, which stays in the local cache for
+forensic review and is never read as market data. The calendar marks them
+`gap` only when that checksum matches the invalid file on record.
+
+- No signal is generated and no trade is made on a gap (or on any day that
+  is not a valid session: `calendar.tradable`).
+- No price is interpolated or invented for a gap.
+- A position is marked at the last valid close strictly before the day,
+  flagged `stale`; a later price is never used (that would look ahead).
+  With no earlier close there is no mark.
+- A return is computed between marks and flagged `stale-endpoint` when an
+  endpoint is stale and `spans-gap: DATE` when a gap lies after the start
+  and on or before the end. A flagged return is never reported as clean.
+- Sessions on either side of a gap are not adjacent, so a price break
+  across a gap cannot be located or explained.
+
+`tests/test_india_marks.py` pins each rule.
+
+## Liquidity and execution (approved 2026-10-28)
+
+- Eligibility: median daily traded value on BSE of at least Rs 3,00,000
+  (provisional), counting sessions without a trade as zero from the ETF's
+  first observed day. Recorded in `etf_criteria.json`; a test fails if it
+  changes.
+- Execution, separately: a simulated order above 5% of the ETF's verified
+  traded value that day is unfilled. A full Rs 3,000 order therefore needs a
+  day with at least Rs 60,000 traded. No fill price or cost is set here.
+
 ## Evidence levels
 
 - **verified**: an official document, retrieved and read, states the fact.
@@ -86,7 +122,14 @@ approximation is substituted for the official TRI.
 A split ratio always comes from a document. A price break is only checked
 against it; a ratio is never inferred from prices.
 
+No price test can show that a distribution (dividend / IDCW) did not occur,
+so an ETF is not eligible until its distribution history for the window is
+verified from official documents (criterion `distributions`, added in Phase
+2.2 for review).
+
 ## Documents only a person can fetch here
+
+See `MANUAL_DOWNLOADS.md` for the current list.
 
 Some publishers refuse this environment (NSE's archive, India Code, the
 income-tax site, HDFC AMC). They are not worked around. Download the

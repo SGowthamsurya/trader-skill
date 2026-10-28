@@ -52,6 +52,8 @@ def import_document(path, cache, url, retrieved_on, title, publisher, mirror_of=
         data = fh.read()
     if fetch.looks_html(data) and not path.lower().endswith((".html", ".htm")):
         raise EvidenceError("%s is a web page, not the document (a 'not found' page?)" % path)
+    if (path.lower().endswith(".pdf") or str(url).lower().endswith(".pdf")) and not data.startswith(b"%PDF-"):
+        raise EvidenceError("%s should be a PDF but does not start with %%PDF- (an error page saved as .pdf?)" % path)
     rec = {"kind": "manual-import", "ok": True, "source": SOURCE, "source_url": url, "retrieved_on": retrieved_on,
            "imported_at": fetch.utc_now(), "filename": os.path.basename(path), "title": title, "publisher": publisher}
     if mirror_of:

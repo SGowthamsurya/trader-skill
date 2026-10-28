@@ -59,7 +59,7 @@ class Structure(unittest.TestCase):
 class Registry(unittest.TestCase):
     def test_the_shipped_registry_is_valid(self):
         self.assertEqual(src.validate(registry()), [])
-        self.assertEqual(len(src.read()["sources"]), 25)
+        self.assertEqual(len(src.read()["sources"]), 26)
 
     def test_it_records_access_facts_not_rates(self):
         text = json.dumps(registry()).lower()

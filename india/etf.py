@@ -31,6 +31,12 @@ Criteria (thresholds in etf_criteria.json):
                 ratio_tolerance or the criterion fails. A break between
                 sessions that are not adjacent cannot be located and stays
                 unresolved
+  distributions the ETF's distribution (dividend / IDCW) history for the
+                whole window was reviewed against official documents: a
+                verified "distributions-reviewed" record in
+                corporate_actions.json covering the window. A payout lowers
+                the price without a split, so no price test can show that
+                none occurred; without that record this is unresolved.
   liquidity     median daily traded value on the venue at or above the
                 threshold (unresolved while no threshold is set). Sessions
                 from the first observed day on which it did not trade count
@@ -57,6 +63,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import bhav  # noqa: E402
 import calendar_in  # noqa: E402
+import execution  # noqa: E402
 import fetch  # noqa: E402
 import secmaster  # noqa: E402
 
@@ -75,8 +82,9 @@ RULES = (
 )
 
 
-ACTION_FIELDS = ("id", "exchange", "key", "type", "units_multiplier", "record_date", "ex_date", "verification",
-                 "documents")
+ACTION_FIELDS = ("id", "exchange", "key", "type", "verification", "documents")
+SPLIT_FIELDS = ("units_multiplier", "record_date", "ex_date")
+ACTION_TYPES = ("unit-split", "distributions-reviewed")
 RATIO_TOLERANCE = 0.15
 
 
@@ -93,13 +101,23 @@ def read_actions(path=None):
                 raise EtfError("corporate action #%d has no %s" % (i, k))
         if a["verification"] not in ("verified", "unverified"):
             raise EtfError("corporate action %s: verification must be verified or unverified" % a["id"])
-        if not a["record_date"] and not a["ex_date"]:
-            raise EtfError("corporate action %s needs a record date or an ex-date" % a["id"])
-        if a["verification"] == "verified":
-            if not (isinstance(a["units_multiplier"], (int, float)) and a["units_multiplier"] > 0):
+        if a["type"] not in ACTION_TYPES:
+            raise EtfError("corporate action %s: type must be one of %s" % (a["id"], ", ".join(ACTION_TYPES)))
+        if a["verification"] == "verified" and not a["documents"]:
+            raise EtfError("corporate action %s: a verified action cites a document" % a["id"])
+        if a["type"] == "unit-split":
+            for k in SPLIT_FIELDS:
+                if k not in a:
+                    raise EtfError("corporate action %s has no %s" % (a["id"], k))
+            if not a["record_date"] and not a["ex_date"]:
+                raise EtfError("corporate action %s needs a record date or an ex-date" % a["id"])
+            if a["verification"] == "verified" and not (
+                    isinstance(a["units_multiplier"], (int, float)) and a["units_multiplier"] > 0):
                 raise EtfError("corporate action %s: a verified action states its units multiplier" % a["id"])
-            if not a["documents"]:
-                raise EtfError("corporate action %s: a verified action cites a document" % a["id"])
+        else:
+            for k in ("covers_from", "covers_to", "distributions"):
+                if k not in a:
+                    raise EtfError("corporate action %s has no %s" % (a["id"], k))
         for d in a["documents"]:
             if not str(d.get("url", "")).startswith("https://") or not re.match(r"^[0-9a-f]{64}$", d.get("sha256", "")):
                 raise EtfError("corporate action %s: each document needs an https url and a sha256" % a["id"])
@@ -109,6 +127,8 @@ def read_actions(path=None):
 def match_action(actions, cal, venue, key, a, b, ratio):
     """('confirmed', action), ('mismatch', action) or (None, None) for a break between a and b."""
     for x in actions:
+        if x.get("type", "unit-split") != "unit-split":
+            continue
         if x.get("verification") != "verified" or x.get("exchange") != venue or str(x.get("key")) != key:
             continue
         hit = x.get("ex_date") == b
@@ -213,7 +233,9 @@ def evaluate(cand, crit, cal, master, rows_by_date, actions, end):
 
     cov = cal.coverage(start, end)
     if cov["complete_weekdays"]:
-        res["complete"] = ("pass", "every weekday accounted for")
+        res["complete"] = ("pass", "every weekday accounted for" + (
+            "; %d documented data gaps excluded from signals and trades (%s)"
+            % (len(cov["documented_gaps"]), ", ".join(cov["documented_gaps"])) if cov["documented_gaps"] else ""))
     else:
         gaps = []
         for status, words in (("unobserved", "never asked for"), ("unreachable", "network failures only"),
@@ -248,11 +270,23 @@ def evaluate(cand, crit, cal, master, rows_by_date, actions, end):
             open_breaks.append("%s -> %s ratio %.4f, not confirmed" % (a, b, r))
     for a, b, r, _ in unlocated:
         open_breaks.append("%s .. %s ratio %.4f, between sessions that are not adjacent" % (a, b, r))
-    done = "; ".join(explained) or "no breaks beyond %.2fx between observed sessions" % ratio
+    done = "; ".join(explained) or ("no unexplained price break beyond %.2fx between adjacent observed sessions "
+                                    "(this does not show that no corporate action occurred)" % ratio)
     res["corporate"] = ("fail", "; ".join(mismatched)) if mismatched else (
         ("unresolved", "; ".join(open_breaks)) if open_breaks else
         ("pass", done) if cov["complete_weekdays"] else
         ("unresolved", "%s, but the history is incomplete" % done))
+
+    reviewed = [x for x in actions if x.get("type") == "distributions-reviewed" and x.get("verification") == "verified"
+                and x.get("exchange") == crit["venue"] and str(x.get("key")) == cand["key"]
+                and x.get("covers_from", "9999") <= start and x.get("covers_to", "") >= end]
+    if reviewed:
+        n = len(reviewed[0]["distributions"])
+        res["distributions"] = ("pass", "reviewed for %s to %s by %s: %d distribution(s) on record"
+                                % (reviewed[0]["covers_from"], reviewed[0]["covers_to"], reviewed[0]["id"], n))
+    else:
+        res["distributions"] = ("unresolved", "distribution (dividend / IDCW) history for the window is not verified; "
+                                "price files cannot show that no distribution occurred")
 
     med = daily_values(sessions, mine)["median"]
     thr = crit["liquidity"].get("min_median_value_inr")
@@ -304,8 +338,12 @@ def liquidity_table(cache, crit, cands, thresholds):
             continue
         mine = [rows_by_date[d][c["key"]] for d in sessions if c["key"] in rows_by_date.get(d, {})]
         v = daily_values(sessions, mine)
+        share = (crit.get("execution") or {}).get("max_share_of_day_value", execution.MAX_SHARE)
+        span = [d for d in sessions if mine and d >= mine[0]["date"]]
         v.update({"candidate": c, "first": mine[0]["date"] if mine else None,
                   "capital_share": (crit["capital_inr"] / v["median"]) if v["median"] else None,
+                  "fillable_capital": execution.fillable_share(crit["capital_inr"], span, rows_by_date, c["key"], cal,
+                                                               share),
                   "passes": {t: bool(v["median"] is not None and v["median"] >= t) for t in thresholds}})
         out.append(v)
     return end, out
@@ -332,14 +370,21 @@ def evaluate_all(cache, crit, cands, actions, confirmations=secmaster.CONFIRMATI
     return end, out
 
 
-def markdown(end, results, crit, cands_doc):
+def markdown(end, results, crit, cands_doc, liquidity=None):
     lines = ["# ETF eligibility review (%s, %s to %s)" % (crit["venue"], crit["window"]["start"], end), "",
              "Generated by `python3 india/etf.py evaluate --markdown` from the local cache. Candidates from "
              "AMFI file sha256 `%s` and %s price file of %s (sha256 `%s`)."
              % (cands_doc["amfi_file"]["sha256"][:16], cands_doc["venue"], cands_doc["price_file"]["date"],
                 cands_doc["price_file"]["sha256"][:16]), "",
-             "Venue note: %s" % crit["venue_note"], "",
-             "| category | symbol | key | ISIN | verdict | failing or unresolved |", "| --- | --- | --- | --- | --- | --- |"]
+             "Venue note: %s" % crit["venue_note"], ""]
+    for verdict, words in (("ELIGIBLE", "every criterion passes"),
+                           ("INSUFFICIENT DATA", "nothing fails, but required evidence is unresolved"),
+                           ("NOT ELIGIBLE", "a criterion fails on the evidence there is")):
+        names = [r["candidate"]["symbol"] for r in results if r["verdict"] == verdict]
+        lines.append("- **%s** (%s): %s" % (verdict, words, ", ".join(names) if names else "none"))
+    lines += ["", "A passing corporate-action or identity criterion means no unexplained break and no unconfirmed "
+              "identity change was found in the observed files; it does not show that no event occurred.", "",
+              "| category | symbol | key | ISIN | verdict | failing or unresolved |", "| --- | --- | --- | --- | --- | --- |"]
     for r in results:
         c = r["candidate"]
         bad = ["**%s** %s: %s" % (k, v[0], v[1]) for k, v in r["criteria"].items() if v[0] != "pass"]
@@ -348,8 +393,29 @@ def markdown(end, results, crit, cands_doc):
     counts = {}
     for r in results:
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
-    lines += ["", "Verdicts: %s." % ", ".join("%s %d" % kv for kv in sorted(counts.items())), "",
-              "Not financial advice. Verdicts describe data quality and evidence, not investment merit."]
+    lines += ["", "Verdicts: %s." % ", ".join("%s %d" % kv for kv in sorted(counts.items()))]
+    if liquidity:
+        thr = crit["liquidity"]["min_median_value_inr"]
+        share = crit["execution"]["max_share_of_day_value"]
+        lines += ["", "## Liquidity and execution", "",
+                  "Median daily traded value on %s, sessions without a trade counted as zero from the first observed "
+                  "day; eligibility threshold Rs %s (%s). Fillable: share of those sessions on which a full Rs %s order "
+                  "would be at most %.0f%% of the ETF's traded value (execution rule, not an eligibility criterion)."
+                  % (crit["venue"], "{:,.0f}".format(thr), crit["liquidity"]["status"].split(";")[0],
+                     "{:,.0f}".format(crit["capital_inr"]), share * 100), "",
+                  "| category | symbol | first observed | median | 10th percentile | traded sessions | threshold | fillable Rs %s |"
+                  % "{:,.0f}".format(crit["capital_inr"]),
+                  "| --- | --- | --- | ---: | ---: | ---: | --- | ---: |"]
+        for r in sorted(liquidity, key=lambda r: -(r["median"] or 0)):
+            c = r["candidate"]
+            lines.append("| %s | %s | %s | %s | %s | %.1f%% | %s | %s |" % (
+                c["category"], c["symbol"], r["first"] or "-",
+                "{:,.0f}".format(r["median"]) if r["median"] is not None else "-",
+                "{:,.0f}".format(r["p10"]) if r["p10"] is not None else "-",
+                100.0 * r["traded"] / r["sessions"] if r["sessions"] else 0.0,
+                "pass" if r["passes"][thr] else "fail",
+                "%.1f%%" % (100 * r["fillable_capital"]) if r["fillable_capital"] is not None else "-"))
+    lines += ["", "Not financial advice. Verdicts describe data quality and evidence, not investment merit."]
     return "\n".join(lines) + "\n"
 
 
@@ -384,15 +450,16 @@ def main(argv=None):
             ts = a.thresholds
             print("%s, %s to %s; daily traded value in rupees, missed sessions counted as zero" % (
                 crit["venue"], crit["window"]["start"], end))
-            print("%-12s %-12s %10s %13s %13s %9s  %s" % ("category", "symbol", "first", "median", "10th pct",
-                                                       "traded", "  ".join("%g" % t for t in ts)))
+            print("%-12s %-12s %10s %13s %13s %9s %10s  %s" % ("category", "symbol", "first", "median", "10th pct",
+                                                            "traded", "fill 3000", "  ".join("%g" % t for t in ts)))
             for r in sorted(rows, key=lambda r: -(r["median"] or 0)):
                 c = r["candidate"]
-                print("%-12s %-12s %10s %13s %13s %8.1f%%  %s" % (
+                print("%-12s %-12s %10s %13s %13s %8.1f%% %9s  %s" % (
                     c["category"], c["symbol"], r["first"] or "-",
                     "{:,.0f}".format(r["median"]) if r["median"] is not None else "-",
                     "{:,.0f}".format(r["p10"]) if r["p10"] is not None else "-",
                     100.0 * r["traded"] / r["sessions"] if r["sessions"] else 0.0,
+                    "%.1f%%" % (100 * r["fillable_capital"]) if r["fillable_capital"] is not None else "-",
                     "  ".join(("pass" if r["passes"][t] else "fail").rjust(len("%g" % t)) for t in ts)))
             for t in ts:
                 print("threshold Rs %s: %d of %d pass" % ("{:,.0f}".format(t), sum(r["passes"][t] for r in rows), len(rows)))
@@ -400,7 +467,9 @@ def main(argv=None):
         actions = read_actions(a.actions)
         end, results = evaluate_all(cache, crit, cands_doc["candidates"], actions)
         if a.markdown:
-            sys.stdout.write(markdown(end, results, crit, cands_doc))
+            thr = crit["liquidity"]["min_median_value_inr"]
+            liq = liquidity_table(cache, crit, cands_doc["candidates"], [thr])[1] if thr else None
+            sys.stdout.write(markdown(end, results, crit, cands_doc, liq))
         elif a.json:
             print(json.dumps({"end": end, "results": results}, indent=2))
         else:

@@ -56,7 +56,7 @@ class Status(Base):
         self.assertEqual(rec["retrieved_on"], "2026-10-29")
         st, got = tri.status(self.cache)
         self.assertEqual(st, "AVAILABLE")
-        self.assertEqual(got["validation"]["rows"], 4)
+        self.assertEqual((got["rows"], got["first"], len(got["files"])), (4, "2018-01-02", 1))
         self.assertEqual(tri.load_series(self.cache)[0], ("2018-01-02", 1000.0))
 
     def test_a_tampered_import_is_blocked_again(self):
@@ -64,6 +64,30 @@ class Status(Base):
         with open(self.cache._blob(rec["sha256"]), "wb") as fh:
             fh.write(b"Date,Total Returns Index\n02 Jan 2018,1\n")
         self.assertEqual(tri.status(self.cache)[0], "BLOCKED")
+
+    def test_several_ranges_merge_and_a_reimport_counts_once(self):
+        tri.import_file(self.file(GOOD), self.cache, PAGE, "2026-10-29")
+        tri.import_file(self.file(GOOD), self.cache, PAGE, "2026-10-29")
+        later = "Date,Total Returns Index\n08 Jan 2018,1004.00\n09 Jan 2018,1005.00\n"
+        tri.import_file(self.file(later, "b.csv"), self.cache, PAGE, "2026-10-29")
+        st, info = tri.status(self.cache)
+        self.assertEqual((st, info["rows"], info["last"], len(info["files"])), ("AVAILABLE", 6, "2018-01-09", 2))
+
+    def test_files_that_disagree_block_the_benchmark(self):
+        tri.import_file(self.file(GOOD), self.cache, PAGE, "2026-10-29")
+        clash = "Date,Total Returns Index\n05 Jan 2018,1003.50\n"
+        tri.import_file(self.file(clash, "c.csv"), self.cache, PAGE, "2026-10-29")
+        st, why = tri.status(self.cache)
+        self.assertEqual(st, "BLOCKED")
+        self.assertIn("disagree on 2018-01-05", why)
+
+    def test_coverage_against_the_window_and_sessions(self):
+        dates = ["2018-01-02", "2018-01-03", "2018-01-05"]
+        self.assertEqual(tri.coverage(dates, "2018-01-01", "2018-01-05"), [])
+        out = tri.coverage(dates, "2018-01-01", "2018-01-31", sessions=["2018-01-02", "2018-01-03", "2018-01-04"])
+        self.assertIn("ends 2018-01-05, before the required 2018-01-31", out[0])
+        self.assertIn("1 exchange sessions inside the covered range have no TRI value (first: 2018-01-04)", out[1])
+        self.assertIn("starts 2019-01-02", tri.coverage(["2019-01-02"], "2018-01-01", None)[0])
 
     def test_import_needs_provenance(self):
         p = self.file(GOOD)
