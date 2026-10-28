@@ -42,6 +42,8 @@ which are unchanged.
 | `pit.py` | point-in-time market view: a strategy sees only sessions up to its decision date; reading later raises |
 | `universe.py` | point-in-time universe: which ETFs could be held on a date, from data and evidence knowable then, with reasons and a digest |
 | `signals.py` | strategy interface (past-only input, optional separate process) and the append-only, hash-chained, sealed signal ledger |
+| `portfolio.py` | accounting in integer paise: settled cash, unsettled proceeds, whole units, fees, a journal reconciled after every event |
+| `simbroker.py` | simulated broker: sealed-ledger input, next-session open fills, 5% cap, gap and closure rules, cost interface (no costs assumed) |
 | `ETF_REVIEW.md` | the current verdict for every candidate |
 
 ```bash

@@ -25,8 +25,8 @@ pit.MarketData (engine only)
 | 1 | `pit.py`: point-in-time market view | done |
 | 2 | `universe.py`: point-in-time universe; liquidity, listing and presence on trailing data only; candidates rebuilt from historical files (survivorship); split adjustment applied only from each action's `announced_on` | done |
 | 3 | `signals.py`: strategy interface and hash-chained signal ledger; strategy optionally in a separate process | done |
-| 4 | `simbroker.py`, `portfolio.py`: T+1 fills at the next tradable session's open, whole units, cash, rejections with reasons | next |
-| 5 | `costs.py`: evidence-backed, effective-dated components; `CostUnavailable` when any is missing | |
+| 4 | `simbroker.py`, `portfolio.py`: T+1 fills at the next tradable session's open, whole units, cash, rejections with reasons | done |
+| 5 | `costs.py`: evidence-backed, effective-dated components; `CostUnavailable` when any is missing | next |
 | 6 | `readiness.py`, `evaluate.py`, `backtest.py`: the gate, metrics, benchmarks | |
 
 ## Readiness gate (a run is a valid performance result only if all pass)
@@ -98,6 +98,48 @@ through `pit.View`.
   unsealed ledger or a different seal.
 - The dummy strategies in `tests/_india_dummy_strategy.py` are mechanics
   tests only, not strategies.
+
+## Broker and portfolio (stage 4)
+
+- Input: `Broker(data, ledger_path, expected_seal)` opens the ledger only
+  through `signals.open_sealed` with the seal recorded outside it; no anchor,
+  no run. The ledger file is never written.
+- Decision after the close of t: the portfolio is marked on a past-only
+  view; each target gets floor(weight x value / reference price) whole
+  units, the reference price being t's close or a flagged stale mark;
+  holdings outside the targets are sold to zero.
+- Execution on the first weekday after t: trading -> fill at that
+  session's open; official holiday or weekend -> next day; gap, invalid,
+  unobserved, unreachable, conflict, or an official session without a file
+  -> unfilled; no-file (unconfirmed closure) -> unfilled, or, with the
+  explicit policy `on_unconfirmed_closure="roll"`, treated as a closure and
+  recorded on the order. Day orders: never retried.
+- Fill price: the execution session's open (printed after the order was
+  placed), positive and within the day's low-high range. Sells before buys.
+  The ETF must trade that session under the ISIN the order named (a holding
+  keeps the ISIN it was bought under). Order value at most 5% of the day's
+  traded value, else unfilled (no partial fill). No short sales. A buy
+  needs units x price + known fees within settled cash: rejected by
+  default, or cut to the most whole units affordable with
+  `on_insufficient_cash="reduce"`, recorded.
+- Settlement: sale proceeds become usable on the next tradable session,
+  never for a buy on the day of the sale.
+- Money is integer paise; a price that is not whole paise is refused, not
+  rounded. Cash, unsettled proceeds, units and fees are recomputed from the
+  journal after every event and must match exactly. Marks use `marks.mark`
+  on past-only views: stale marks stay flagged, each mark records the
+  documented gaps since the previous one, and a holding with no mark makes
+  the value unknown, never zero.
+- Costs: `CostModel.charges(...) -> Charges(paise, status, components)`.
+  The default `UnresolvedCosts` returns no amount (status unresolved); the
+  journal and every valuation say cash excludes those fees. No model treats
+  fees as zero. The only fixed-fee model is a test fixture labelled
+  synthetic.
+- Every broker result carries the label MECHANICS ONLY until stage 6.
+- Not modelled because the price files do not support it: price bands and
+  circuit limits, slippage from the open, queue position, partial fills.
+  The 5% check uses the execution day's full traded value, known only after
+  that day's close.
 
 ## Known limits
 

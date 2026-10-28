@@ -344,6 +344,10 @@ class SealedLedger(object):
         return [json.loads(canonical(r)) for r in self._records if r["type"] == "signal"]
 
     @property
+    def venue(self):
+        return self._records[0]["venue"]
+
+    @property
     def seal_hash(self):
         return self._records[-1]["hash"]
 

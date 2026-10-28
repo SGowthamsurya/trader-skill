@@ -103,6 +103,14 @@ class MarketData(object):
         gaps = sorted(g.isoformat() for g in getattr(self._cal, "gaps", {}) if g.isoformat() <= d)
         return hashlib.sha256((h + json.dumps(gaps)).encode("utf-8")).hexdigest()
 
+    def status_on(self, day):
+        """Engine-only: the calendar status of one day. The broker asks only about the day it is processing."""
+        return self._cal.status(_iso(day))
+
+    def last_session(self):
+        """Engine-only: the last tradable session in the data (to stop the broker's clock)."""
+        return self._sessions[-1] if self._sessions else None
+
     def sessions_between(self, start, end):
         """Engine-only: tradable sessions in a closed range."""
         return [d for d in self._sessions if _iso(start) <= d <= _iso(end)]
