@@ -26,7 +26,7 @@ pit.MarketData (engine only)
 | 2 | `universe.py`: point-in-time universe; liquidity, listing and presence on trailing data only; candidates rebuilt from historical files (survivorship); split adjustment applied only from each action's `announced_on` | done |
 | 3 | `signals.py`: strategy interface and hash-chained signal ledger; strategy optionally in a separate process | done |
 | 4 | `simbroker.py`, `portfolio.py`: T+1 fills at the next tradable session's open, whole units, cash, rejections with reasons | done |
-| 5 | `costs.py`: evidence-backed, effective-dated components; `CostUnavailable` when any is missing | next |
+| 5 | `costs.py`, `cost_schedule.json`: evidence-backed, effective-dated components; unresolved (never zero) when any is missing | done |
 | 6 | `readiness.py`, `evaluate.py`, `backtest.py`: the gate, metrics, benchmarks | |
 
 ## Readiness gate (a run is a valid performance result only if all pass)
@@ -138,8 +138,34 @@ through `pit.View`.
 - Every broker result carries the label MECHANICS ONLY until stage 6.
 - Not modelled because the price files do not support it: price bands and
   circuit limits, slippage from the open, queue position, partial fills.
-  The 5% check uses the execution day's full traded value, known only after
-  that day's close.
+- Deviation (recorded before any real-market test): the 5% rule first used
+  the execution day's full traded value, which is not known at the open.
+  The default is now `liquidity_cap="ex-ante"`: when the order is placed its
+  value at the reference price must be at most 5% of the ETF's traded value
+  on the decision day, known then; otherwise it is not placed. Each fill
+  records, as an audit field only, whether it was also within 5% of the
+  execution day's value. The old rule remains as `liquidity_cap="ex-post"`,
+  a labelled sensitivity mode that is never the default.
+
+## Costs (stage 5)
+
+- `cost_schedule.json`: every component that may apply to an ETF delivery
+  trade (brokerage, STT, BSE and NSE transaction charges, SEBI turnover
+  fee, stamp duty, depository debit charge, GST on charges), with where it
+  applies, its basis (turnover, per fill, per debit, on other components),
+  and dated periods holding an exact rational or paise rate, a rounding rule
+  and a cited, checksummed primary source. Overlapping periods are refused.
+- `costs.ScheduleCosts` implements the stage 4 `CostModel`: one component
+  at a time, exact Decimal, rounded per component to paise. A component
+  without a verified period covering the trade date is unresolved; the
+  fill's Charges keep the known part (`known_paise`), list what is
+  unresolved and have status unresolved. The portfolio deducts the known
+  part and counts the fill as having an unresolved remainder; never zero.
+- On 2026-10-28 no component has a verified rate for the study window
+  (12 component-side pairs unresolved); the CDSL debit tariff is recorded as
+  ambiguous partial evidence, not a rate.
+- Investor-level taxes (capital gains, tax on distributions) are listed with
+  what they depend on and are never computed; results are pre-tax.
 
 ## Known limits
 

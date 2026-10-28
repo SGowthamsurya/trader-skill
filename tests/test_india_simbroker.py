@@ -137,18 +137,41 @@ class Timing(Base):
 
 
 class Checks(Base):
-    def test_the_five_percent_cap(self):
+    def test_the_ex_post_sensitivity_mode_keeps_the_execution_day_rule(self):
         # 11 units at 259.49 = 2,854.39; 5% of 57,087.80 is exactly that
         exact = market(lambda d: flat(d, k1_value=57087.80 if d == "2024-01-22" else 10_000_000.0))
-        self.assertEqual(self.order(self.run_broker(exact, [("2024-01-19", {"590901": "1"})]))["status"], "filled")
+        o = self.order(self.run_broker(exact, [("2024-01-19", {"590901": "1"})], liquidity_cap="ex-post"))
+        self.assertEqual(o["status"], "filled")
         thin = market(lambda d: flat(d, k1_value=57087.79 if d == "2024-01-22" else 10_000_000.0))
-        o = self.order(self.run_broker(thin, [("2024-01-19", {"590901": "1"})]))
+        o = self.order(self.run_broker(thin, [("2024-01-19", {"590901": "1"})], liquidity_cap="ex-post"))
         self.assertEqual(o["status"], "unfilled")
         self.assertIn("above 5", o["reason"])
 
+    def test_the_default_ex_ante_cap_uses_the_decision_days_traded_value(self):
+        # reference 11 x 259.49 = 2,854.39 against 5% of the decision day's value
+        ok = market(lambda d: flat(d, k1_value=57087.80 if d == "2024-01-19" else 10_000_000.0))
+        self.assertEqual(self.order(self.run_broker(ok, [("2024-01-19", {"590901": "1"})]))["status"], "filled")
+        thin = market(lambda d: flat(d, k1_value=57087.79 if d == "2024-01-19" else 10_000_000.0))
+        o = self.order(self.run_broker(thin, [("2024-01-19", {"590901": "1"})]))
+        self.assertEqual((o["status"], o["execution_date"]), ("not-placed", None))
+        self.assertIn("decision day's traded value", o["reason"])
+
+    def test_the_execution_days_traded_value_cannot_decide_an_ex_ante_fill(self):
+        thin_next_day = market(lambda d: flat(d, k1_value=1.0 if d == "2024-01-22" else 10_000_000.0))
+        o = self.order(self.run_broker(thin_next_day, [("2024-01-19", {"590901": "1"})]))
+        self.assertEqual((o["status"], o["within_cap_of_execution_day"]), ("filled", False))   # audit only
+        deep = self.order(self.run_broker(market(flat), [("2024-01-19", {"590901": "1"})]))
+        self.assertEqual((deep["filled"], deep["within_cap_of_execution_day"]), (o["filled"], True))
+
+    def test_the_liquidity_mode_is_validated(self):
+        data = market(flat)
+        path, seal = ledger(self.tmp.name, data, [("2024-01-19", {"590901": "1"})])
+        with self.assertRaises(B.BrokerError):
+            B.Broker(data, path, seal, liquidity_cap="same-day")
+
     def test_a_full_capital_order_needs_sixty_thousand_of_traded_value(self):
         def rows(d):
-            return {"590901": row(d, "590901", A, 100.0, value=60000.0 if d == "2024-01-22" else 1e7),
+            return {"590901": row(d, "590901", A, 100.0, value=60000.0 if d == "2024-01-19" else 1e7),
                     "590902": row(d, "590902", ISIN_B, 100.0)}
         o = self.order(self.run_broker(market(rows), [("2024-01-19", {"590901": "1"})]))
         self.assertEqual((o["filled"], o["price_paise"]), (30, 10000))      # 30 x Rs 100 = Rs 3,000 = 5% of Rs 60,000
@@ -196,8 +219,13 @@ class SellsAndSettlement(Base):
             if d == "2024-01-26":
                 del r["590901"]           # held ETF does not trade on the decision day
             return r
-        sell = self.order(self.run_broker(market(rows), [("2024-01-19", {"590901": "1"}), ("2024-01-26", {})]), n=1)
+        plan = [("2024-01-19", {"590901": "1"}), ("2024-01-26", {})]
+        sell = self.order(self.run_broker(market(rows), plan, liquidity_cap="ex-post"), n=1)
         self.assertEqual((sell["isin"], sell["status"]), (A, "filled"))
+        # under the default ex-ante cap there is no decision-day liquidity to place the sell against
+        sell = self.order(self.run_broker(market(rows), plan), n=1)
+        self.assertEqual(sell["status"], "not-placed")
+        self.assertIn("liquidity unknown", sell["reason"])
 
 
 class Costs(Base):

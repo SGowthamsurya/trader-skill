@@ -23,10 +23,18 @@ Timing (one signal at a time, in ledger order):
   price      the execution session's open: printed after the order was
              placed, never the decision day's close. It must be positive
              and inside that day's low-high range, or the order is unfilled.
+  liquidity  liquidity_cap="ex-ante" (default): when the order is placed,
+             its value at the reference price must be at most max_share (5%)
+             of the ETF's traded value on the decision day, a figure known
+             then; otherwise the order is not placed. Each fill also records,
+             as an audit field only, whether it was within 5% of the
+             execution day's traded value. liquidity_cap="ex-post" applies
+             the 5% test to the execution day's full traded value instead,
+             which is only known after that day's close: a sensitivity mode,
+             never the default, because it uses same-day information.
   checks     sells before buys; the ETF must have a verified trade that
-             session with the ISIN the signal named; the order's value must
-             be at most max_share (5%) of that day's traded value, or it is
-             unfilled (no partial fill); no short sales; a buy needs units x
+             session with the ISIN the signal named; no partial fills; no
+             short sales; a buy needs units x
              price + known fees within settled cash, else it is rejected
              (on_insufficient_cash="reject", the default) or cut to the most
              whole units affordable ("reduce", recorded).
@@ -39,8 +47,10 @@ zero. A historical, evidence-backed schedule is stage 5.
 
 Not modelled, because the price files do not support it: price bands and
 circuit limits, slippage from the open, queue position and partial fills.
-The 5% check uses the execution day's full traded value, which is only
-known after that day's close.
+Deviation recorded in Phase 3 completion: the 5% rule was first applied to
+the execution day's full traded value (not known at the open). The default
+is now the causally valid ex-ante rule above; the old rule survives only as
+the labelled ex-post sensitivity mode.
 
 Every result is MECHANICS ONLY until the stage 6 readiness gate exists.
 """
@@ -70,14 +80,18 @@ class BrokerError(Exception):
 class Charges(object):
     STATUSES = ("evidenced", "synthetic", "unresolved")
 
-    def __init__(self, paise, status, components):
+    def __init__(self, paise, status, components, known_paise=None):
         if status not in self.STATUSES:
             raise BrokerError("charge status must be one of %s" % ", ".join(self.STATUSES))
         if (paise is None) != (status == "unresolved"):
             raise BrokerError("only unresolved charges have no amount")
         if paise is not None and (not isinstance(paise, int) or paise < 0):
             raise BrokerError("charges are a whole, non-negative number of paise")
-        self.paise, self.status, self.components = paise, status, components
+        if known_paise is None:
+            known_paise = paise if paise is not None else 0
+        if not isinstance(known_paise, int) or known_paise < 0 or (paise is not None and known_paise != paise):
+            raise BrokerError("known_paise is the whole fee when resolved, the known part when not")
+        self.paise, self.status, self.components, self.known_paise = paise, status, components, known_paise
 
 
 class CostModel(object):
@@ -95,13 +109,17 @@ class UnresolvedCosts(CostModel):
 
 class Broker(object):
     def __init__(self, data, ledger_path, expected_seal, capital_inr=3000, max_share=execution.MAX_SHARE,
-                 cost_model=None, on_unconfirmed_closure="unfilled", on_insufficient_cash="reject"):
+                 cost_model=None, on_unconfirmed_closure="unfilled", on_insufficient_cash="reject",
+                 liquidity_cap="ex-ante"):
         if not isinstance(expected_seal, str) or not re.match(r"^[0-9a-f]{64}$", expected_seal):
             raise BrokerError("the seal hash recorded outside the ledger is required (64 hex characters)")
         if on_unconfirmed_closure not in ("unfilled", "roll"):
             raise BrokerError("on_unconfirmed_closure is unfilled or roll")
         if on_insufficient_cash not in ("reject", "reduce"):
             raise BrokerError("on_insufficient_cash is reject or reduce")
+        if liquidity_cap not in ("ex-ante", "ex-post"):
+            raise BrokerError("liquidity_cap is ex-ante or ex-post")
+        self.cap_mode = liquidity_cap
         self.ledger = signals.open_sealed(ledger_path, expected_seal)
         if self.ledger.venue != data.venue:
             raise BrokerError("the ledger is for %s, the market data for %s" % (self.ledger.venue, data.venue))
@@ -111,7 +129,7 @@ class Broker(object):
         self.portfolio = P.Portfolio(P.to_paise(capital_inr), {
             "ledger_seal": self.ledger.seal_hash, "venue": data.venue, "max_share": str(max_share),
             "on_unconfirmed_closure": on_unconfirmed_closure, "on_insufficient_cash": on_insufficient_cash,
-            "cost_model": type(self.costs).__name__})
+            "liquidity_cap": liquidity_cap, "cost_model": type(self.costs).__name__})
         self.orders, self.statuses, self._last_mark = [], set(), None
         self.held_isin = {}   # the ISIN each holding was bought under; sells must match it
 
@@ -204,9 +222,28 @@ class Broker(object):
             if delta == 0:
                 continue
             order.update(side="buy" if delta > 0 else "sell", requested=abs(delta))
+            if self.cap_mode == "ex-ante":
+                why = self._ex_ante(view, t, key, abs(delta))
+                if why:
+                    order.update(status="not-placed", reason=why)
+                    self._record(order)
+                    continue
             self._record(order)
             pending.append(order)
         return pending
+
+    def _ex_ante(self, view, t, key, units):
+        """None if the order is within max_share of the decision day's traded value, else why not."""
+        bar = view.bar(key, t)
+        price, _ = view.mark(key)
+        if not bar or not bar.get("value") or price is None:
+            return "no traded value for %s observed on the decision day %s; liquidity unknown" % (key, t)
+        value_paise = decimal.Decimal(str(bar["value"])) * 100
+        order = decimal.Decimal(units * P.to_paise(price))
+        if order > self.max_share * value_paise:
+            return "order value %s is above %s%% of the decision day's traded value %s" % (
+                P.rupees(int(order)), self.max_share * 100, P.rupees(int(value_paise)))
+        return None
 
     # ------------------------------------------------------------ execution
 
@@ -234,34 +271,39 @@ class Broker(object):
             units = min(units, self.portfolio.holdings.get(o["key"], 0))
             if not units:
                 return self._unfilled(o, day, "nothing held to sell")
-        if decimal.Decimal(units * price) > self.max_share * value_paise:
+        if self.cap_mode == "ex-post" and decimal.Decimal(units * price) > self.max_share * value_paise:
             return self._unfilled(o, day, "order value %s is above %s%% of the day's traded value %s" % (
                 P.rupees(units * price), self.max_share * 100, P.rupees(int(value_paise))))
         ch = self._charges(o, units, price, day)
         if o["side"] == "sell":
-            self.portfolio.sell(day, o["key"], units, price, ch.paise, o["seq"])
+            self.portfolio.sell(day, o["key"], units, price, ch.known_paise, o["seq"], ch.status == "unresolved")
         else:
             cash = self.portfolio.cash
-            if units * price + (ch.paise or 0) > cash:
+            if units * price + ch.known_paise > cash:
                 if self.cash_policy == "reject":
                     return self._unfilled(o, day, "needs %s, settled cash is %s" % (
-                        P.rupees(units * price + (ch.paise or 0)), P.rupees(cash)))
+                        P.rupees(units * price + ch.known_paise), P.rupees(cash)))
                 while units > 0:
                     units -= 1
                     ch = self._charges(o, units, price, day) if units else ch
-                    if units and units * price + (ch.paise or 0) <= cash:
+                    if units and units * price + ch.known_paise <= cash:
                         break
                 if not units:
                     return self._unfilled(o, day, "cannot afford one unit at %s" % P.rupees(price))
                 o["assumptions"].append("reduced from %d to %d units for settled cash (policy reduce)"
                                         % (o["requested"], units))
-            self.portfolio.buy(day, o["key"], units, price, ch.paise, o["seq"])
+            self.portfolio.buy(day, o["key"], units, price, ch.known_paise, o["seq"], ch.status == "unresolved")
             self.held_isin[o["key"]] = o["isin"]
+        audit = None
+        if self.cap_mode == "ex-ante":
+            audit = bool(decimal.Decimal(units * price) <= self.max_share * value_paise)
         o.update(status="filled", execution_date=day, filled=units, price_paise=price, fee_paise=ch.paise,
-                 cost_status=ch.status, cost_components=ch.components)
+                 fee_known_paise=ch.known_paise, cost_status=ch.status, cost_components=ch.components,
+                 within_cap_of_execution_day=audit)
         self.statuses.add(ch.status)
         self.portfolio.note({"type": "filled", "order": o["seq"], "date": day, "units": units, "price_paise": price,
-                             "fee_paise": ch.paise, "cost_status": ch.status})
+                             "fee_paise": ch.paise, "fee_known_paise": ch.known_paise, "cost_status": ch.status,
+                             "within_cap_of_execution_day": audit})
 
     def _charges(self, o, units, price, day):
         ch = self.costs.charges(o["side"], units, price, day, self.data.venue, o["key"])

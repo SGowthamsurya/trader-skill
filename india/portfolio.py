@@ -78,41 +78,51 @@ class Portfolio(object):
             raise AccountingError("money moves only through buy(), sell() and settle()")
         return self._post(entry)
 
-    def buy(self, day, key, units, price_paise, fee_paise, order_seq):
-        """fee_paise None means unresolved: excluded from cash and counted, never treated as zero."""
+    def buy(self, day, key, units, price_paise, fee_paise, order_seq, fee_unresolved=False):
+        """fee_paise is the known fee; fee_unresolved marks a remainder that is not known (None means
+        nothing is known). An unknown remainder is excluded from cash and counted, never treated as zero."""
         if not isinstance(units, int) or units <= 0:
             raise AccountingError("a buy is a positive whole number of units")
-        cost = units * price_paise + (fee_paise or 0)
+        fee_paise, fee_unresolved = self._fee_parts(fee_paise, fee_unresolved)
+        cost = units * price_paise + fee_paise
         if cost > self.cash:
             raise AccountingError("buy of %d %s costs %s, settled cash is %s" % (units, key, rupees(cost),
                                                                                 rupees(self.cash)))
         self.cash -= cost
         self.holdings[key] = self.holdings.get(key, 0) + units
-        self._fee(fee_paise)
+        self._fee(fee_paise, fee_unresolved)
         return self._post({"type": "buy", "date": day, "key": key, "units": units, "price_paise": price_paise,
-                           "fee_paise": fee_paise, "cash_paise": -cost, "order": order_seq})
+                           "fee_paise": fee_paise, "fee_unresolved": fee_unresolved, "cash_paise": -cost,
+                           "order": order_seq})
 
-    def sell(self, day, key, units, price_paise, fee_paise, order_seq):
+    def sell(self, day, key, units, price_paise, fee_paise, order_seq, fee_unresolved=False):
         if not isinstance(units, int) or units <= 0:
             raise AccountingError("a sell is a positive whole number of units")
         if units > self.holdings.get(key, 0):
             raise AccountingError("cannot sell %d %s, holding %d" % (units, key, self.holdings.get(key, 0)))
-        proceeds = units * price_paise - (fee_paise or 0)
+        fee_paise, fee_unresolved = self._fee_parts(fee_paise, fee_unresolved)
+        proceeds = units * price_paise - fee_paise
         self.holdings[key] -= units
         if not self.holdings[key]:
             del self.holdings[key]
         self.unsettled.append((day, proceeds))
-        self._fee(fee_paise)
+        self._fee(fee_paise, fee_unresolved)
         return self._post({"type": "sell", "date": day, "key": key, "units": units, "price_paise": price_paise,
-                           "fee_paise": fee_paise, "unsettled_paise": proceeds, "order": order_seq})
+                           "fee_paise": fee_paise, "fee_unresolved": fee_unresolved, "unsettled_paise": proceeds,
+                           "order": order_seq})
 
-    def _fee(self, fee_paise):
+    @staticmethod
+    def _fee_parts(fee_paise, fee_unresolved):
         if fee_paise is None:
+            return 0, True
+        if not isinstance(fee_paise, int) or isinstance(fee_paise, bool) or fee_paise < 0:
+            raise AccountingError("a fee is a whole, non-negative number of paise")
+        return fee_paise, bool(fee_unresolved)
+
+    def _fee(self, fee_paise, fee_unresolved):
+        self.fees_known += fee_paise
+        if fee_unresolved:
             self.fees_unknown += 1
-        else:
-            if not isinstance(fee_paise, int) or fee_paise < 0:
-                raise AccountingError("a fee is a whole, non-negative number of paise")
-            self.fees_known += fee_paise
 
     def settle(self, day):
         """Proceeds of sales made before `day` become cash on `day` (the next tradable session)."""
@@ -142,10 +152,8 @@ class Portfolio(object):
                 cash += e["cash_paise"]
                 unsettled -= e["cash_paise"]
             if t in ("buy", "sell"):
-                if e["fee_paise"] is None:
-                    unknown += 1
-                else:
-                    known += e["fee_paise"]
+                known += e["fee_paise"]
+                unknown += 1 if e["fee_unresolved"] else 0
         holdings = {k: v for k, v in holdings.items() if v}
         state = (self.cash, sum(p for _, p in self.unsettled), self.holdings, self.fees_known, self.fees_unknown)
         if (cash, unsettled, holdings, known, unknown) != state:
