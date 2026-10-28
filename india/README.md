@@ -112,6 +112,43 @@ forensic review and is never read as market data. The calendar marks them
   traded value that day is unfilled. A full Rs 3,000 order therefore needs a
   day with at least Rs 60,000 traded. No fill price or cost is set here.
 
+## Durability of the local cache (risk; no backup exists)
+
+Everything downloaded lives only in `india/data/` (ignored by git) on the
+machine that ran the collection. On 2026-10-28 that was a temporary cloud
+container, which is reclaimed after inactivity. Measured then: 654 MB of
+raw files (2,176 BSE daily files, the AMFI NAV file, 4 official documents of
+about 3.8 MB), a 363 MB derived index (rebuilt from the raw files on first
+use) and a 1.1 MB manifest.
+
+**No backup has been made or verified.** Checked on 2026-10-28: raw market
+data may not go into git; no folder on the user's own computer is shared
+with the session (Remote Control lists none); the artifact asset store
+allows 15 MB per file and 256 MB per version and would publish third-party
+data whose redistribution terms are unreviewed, so it is not used.
+
+If the cache is lost:
+
+- Committed files still record what was used: the checksums of the
+  corrupt files (`data_gaps.json`), and the URL, retrieval date and SHA-256
+  of every cited document (`corporate_actions.json`,
+  `identity_confirmations.json`, `cost_tax_sources.json`,
+  `etf_candidates.json`). `evidence.py check` reports each one missing.
+- BSE daily files can be collected again with `bhav.py collect` (about
+  2,100 requests, roughly an hour at one request per second). Their URLs
+  follow from the dates; their individual checksums are only in the lost
+  manifest, so a re-collected file cannot be shown identical to the first.
+- Documents are re-downloaded from the URLs recorded in the committed files
+  and imported with `evidence.py import`; a different checksum means the
+  publisher's file changed and the evidence must be read again.
+- Anything derived from the cache (`ETF_REVIEW.md`, eligibility) must be
+  regenerated and compared before it is relied on.
+
+To make the cache durable, the user can share a folder on their own
+computer through Remote Control (the session can then copy `india/data/`
+there with the user's approval), or approve committing a compact checksum
+inventory of the manifest (metadata only, no market data).
+
 ## Evidence levels
 
 - **verified**: an official document, retrieved and read, states the fact.

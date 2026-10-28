@@ -292,11 +292,43 @@ def resolution(records, venue):
     return ok, refused, invalid
 
 
-def unresolved(records, venue, start, end):
-    ok, refused, _ = resolution(records, venue)
+def documented_gaps(records, venue, gaps_path=None):
+    """{date: sha256} of gaps in india/data_gaps.json whose checksum matches an invalid file on record.
+    The same rule calendar_in applies, so both tools classify a day alike."""
+    import calendar_in  # imported here: calendar_in imports this module
+    listed = {d.isoformat(): sha for d, sha in calendar_in.read_gaps(gaps_path or calendar_in.GAPS, venue).items()}
+    seen = {}
+    for r in records:
+        if r.get("kind") == "invalid" and SOURCE_VENUE.get(r.get("source")) == venue and r.get("date"):
+            seen.setdefault(r["date"], set()).add(r.get("sha256"))
+    return {d: sha for d, sha in listed.items() if sha in seen.get(d, set())}
+
+
+def classify(records, venue, start, end, gaps_path=None):
+    """{weekday: class} with class one of: valid-file, refused-all-layouts, documented-gap,
+    invalid-undocumented, unresolved. A documented gap is accounted for but stays unresolved data."""
+    ok, refused, invalid = resolution(records, venue)
+    gaps = documented_gaps(records, venue, gaps_path)
     every = set(VENUES[venue])
-    return [d for d in (x.isoformat() for x in weekdays(start, end))
-            if d not in ok and not refused.get(d, set()) >= every]
+    out = {}
+    for d in (x.isoformat() for x in weekdays(start, end)):
+        if d in ok:
+            out[d] = "valid-file"
+        elif d in gaps:
+            out[d] = "documented-gap"
+        elif d in invalid:
+            out[d] = "invalid-undocumented"
+        elif refused.get(d, set()) >= every:
+            out[d] = "refused-all-layouts"
+        else:
+            out[d] = "unresolved"
+    return out
+
+
+def unresolved(records, venue, start, end, gaps_path=None):
+    """Weekdays with no valid file, no refusal in every layout and no documented gap."""
+    return [d for d, c in classify(records, venue, start, end, gaps_path).items()
+            if c in ("unresolved", "invalid-undocumented")]
 
 
 def collect(fetcher, venue, start, end, max_requests, max_network_failures=3, log=None):
@@ -388,15 +420,15 @@ def main(argv=None):
         if a.cmd in ("collect", "status"):
             start, end = datetime.date.fromisoformat(a.start), datetime.date.fromisoformat(a.end)
             if a.cmd == "status":
-                recs = cache.records()
-                ok, refused, invalid = resolution(recs, a.venue)
-                days = [x.isoformat() for x in weekdays(start, end)]
-                every = set(VENUES[a.venue])
-                print("%d weekdays: %d with a valid file, %d refused in every layout, %d unresolved, "
-                      "%d with an invalid file on record" % (
-                          len(days), sum(d in ok for d in days),
-                          sum(d not in ok and refused.get(d, set()) >= every for d in days),
-                          len(unresolved(recs, a.venue, start, end)), sum(d in invalid for d in days)))
+                cls = classify(cache.records(), a.venue, start, end)
+                n = {k: sum(1 for c in cls.values() if c == k) for k in
+                     ("valid-file", "refused-all-layouts", "documented-gap", "invalid-undocumented", "unresolved")}
+                gaps = sorted(d for d, c in cls.items() if c == "documented-gap")
+                print("%d weekdays: %d with a valid file, %d refused in every layout, %d documented data gaps "
+                      "(excluded, unresolved, checksum-matched: %s), %d invalid files not documented, "
+                      "%d not yet resolved" % (len(cls), n["valid-file"], n["refused-all-layouts"],
+                                                n["documented-gap"], ", ".join(gaps) or "none",
+                                                n["invalid-undocumented"], n["unresolved"]))
                 return 0
             res = collect(fetch.Fetcher(src.read(a.registry), cache), a.venue, start, end, a.max_requests,
                           a.max_network_failures)

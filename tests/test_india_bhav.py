@@ -239,5 +239,64 @@ class DerivedIndex(unittest.TestCase):
         self.assertEqual(calendar_in.from_cache(self.cache, "BSE").status("2024-01-02"), "trading")
 
 
+class GapConsistency(unittest.TestCase):
+    """bhav.py and calendar_in.py must classify a corrupt published file the same way."""
+
+    def setUp(self):
+        import json
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cache = fetch.Cache(os.path.join(self.tmp.name, "c"))
+        fx.put_file(self.cache, "bse-bhavcopy-isin", "2024-01-02", fx.bse_legacy("2024-01-02", ROWS))
+        bad = fx.put_file(self.cache, "bse-bhavcopy-isin", "2024-01-03", fx.bse_legacy("2024-01-04", ROWS))  # wrong date
+        self.cache.note({"kind": "invalid", "ok": False, "source": "bse-bhavcopy-isin", "url": bad["url"],
+                         "date": "2024-01-03", "sha256": bad["sha256"], "detail": "synthetic corrupt file"})
+        fx.put_refusal(self.cache, "bse-bhavcopy-udiff", "2024-01-03")
+        self.sha = bad["sha256"]
+        self.gaps = os.path.join(self.tmp.name, "gaps.json")
+
+        def write(sha):
+            with open(self.gaps, "w") as fh:
+                json.dump({"gaps": [{"venue": "BSE", "date": "2024-01-03", "sha256": sha, "reason": "synthetic",
+                                     "status": "unresolved", "handling": "excluded"}]}, fh)
+        self.write = write
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_checksum_matched_gap_is_documented_not_unresolved(self):
+        self.write(self.sha)
+        cls = bhav.classify(self.cache.records(), "BSE", fx.d("2024-01-02"), fx.d("2024-01-03"), self.gaps)
+        self.assertEqual(cls, {"2024-01-02": "valid-file", "2024-01-03": "documented-gap"})
+        self.assertEqual(bhav.unresolved(self.cache.records(), "BSE", fx.d("2024-01-02"), fx.d("2024-01-03"),
+                                         self.gaps), [])
+
+    def test_a_gap_with_another_checksum_stays_invalid_and_unresolved(self):
+        self.write("b" * 64)
+        cls = bhav.classify(self.cache.records(), "BSE", fx.d("2024-01-03"), fx.d("2024-01-03"), self.gaps)
+        self.assertEqual(cls["2024-01-03"], "invalid-undocumented")
+        self.assertEqual(bhav.unresolved(self.cache.records(), "BSE", fx.d("2024-01-03"), fx.d("2024-01-03"),
+                                         self.gaps), ["2024-01-03"])
+
+    def test_both_tools_agree_day_by_day(self):
+        import calendar_in
+        for sha, want_cal in ((self.sha, "gap"), ("b" * 64, "invalid")):
+            self.write(sha)
+            cls = bhav.classify(self.cache.records(), "BSE", fx.d("2024-01-02"), fx.d("2024-01-03"), self.gaps)
+            cal = calendar_in.from_cache(self.cache, "BSE", gaps_path=self.gaps)
+            self.assertEqual(cal.status("2024-01-03"), want_cal)
+            self.assertEqual(cls["2024-01-03"] == "documented-gap", cal.status("2024-01-03") == "gap")
+            self.assertEqual(cal.status("2024-01-02"), "trading")
+
+    def test_the_corrupt_file_is_kept_and_never_read_as_data(self):
+        self.write(self.sha)
+        self.assertTrue(self.cache.read(self.sha))                       # still in the cache, checksum intact
+        self.assertEqual([r["date"] for r, _, _ in bhav.observations(self.cache, "BSE")], ["2024-01-02"])
+
+    def test_the_shipped_gaps_match_the_real_records_rule(self):
+        import calendar_in
+        listed = sorted(d.isoformat() for d in calendar_in.read_gaps(exchange="BSE"))
+        self.assertEqual(listed, ["2022-02-07", "2022-07-15"])
+
+
 if __name__ == "__main__":
     unittest.main()
