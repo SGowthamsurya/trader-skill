@@ -123,5 +123,13 @@ python3 india/evidence.py import FILE.pdf --url https://... --retrieved-on YYYY-
 - The NSE archive refused connections on 2026-10-28 after serving files
   earlier that day; BSE is the only venue with reachable history for now.
 - A bhavcopy lists only what traded that day: absence is not delisting.
+- Phase 2.1: BSE daily files collected for every weekday 2018-01-01 to
+  2026-10-27: 2,174 sessions, 126 weekdays refused in both layouts
+  (closures, unconfirmed), and 2 files corrupt as published (2022-02-07,
+  2022-07-15), left unresolved.
+- Reliance Nippon Life AMC Notice cum Addendum No. 107 verifies the
+  NIFTYBEES and BANKBEES face-value change from 10 to 1 with record date
+  2019-12-20. The new ISINs are corroborated, not verified: no retrieved
+  document states both old and new.
 
 Education and tooling, not financial or tax advice.

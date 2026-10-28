@@ -70,7 +70,18 @@ class Evaluate(unittest.TestCase):
         self.build(days=DAYS[:5] + DAYS[6:])
         verdict, out, why = self.run_()
         self.assertEqual((verdict, out["complete"]), ("INSUFFICIENT DATA", "unresolved"))
-        self.assertIn("1 weekdays", why["complete"][1])
+        self.assertIn("1 with never asked for (2024-01-08)", why["complete"][1])
+
+    def test_a_corrupt_file_day_is_named_as_the_gap(self):
+        self.build()
+        fx.put_file(self.cache, "bse-bhavcopy-isin", "2024-01-15",
+                    fx.bse_legacy("2024-01-16", [("590901", "SYNBEES", A, 100.0, 100.0, 1, 1.0)]))  # wrong date
+        self.cache.note({"kind": "invalid", "ok": False, "source": "bse-bhavcopy-isin", "url": "https://x/i",
+                         "date": "2024-01-15", "sha256": self.cache.records()[-1]["sha256"], "detail": "synthetic"})
+        crit = dict(CRIT, window={"start": "2024-01-01", "end": "2024-01-15"})
+        verdict, out, why = self.run_(crit)
+        self.assertEqual((verdict, out["complete"]), ("INSUFFICIENT DATA", "unresolved"))
+        self.assertIn("1 with a corrupt or invalid file (2024-01-15)", why["complete"][1])
 
     def test_a_unit_above_the_capital_fails(self):
         self.build(price=lambda d: 3289.43 if d == "2024-01-03" else 100.0)

@@ -212,9 +212,16 @@ def evaluate(cand, crit, cal, master, rows_by_date, actions, end):
         res["start"] = ("pass" if late <= tol else "fail", "first observed %s" % first)
 
     cov = cal.coverage(start, end)
-    missing = cov["weekday"].get("unobserved", 0) + cov["weekday"].get("unreachable", 0)
-    res["complete"] = ("pass", "every weekday accounted for") if cov["complete_weekdays"] else (
-        "unresolved", "%d weekdays in the window have no file and no refusal on record" % missing)
+    if cov["complete_weekdays"]:
+        res["complete"] = ("pass", "every weekday accounted for")
+    else:
+        gaps = []
+        for status, words in (("unobserved", "never asked for"), ("unreachable", "network failures only"),
+                              ("invalid", "a corrupt or invalid file"), ("conflict", "a file on an official holiday")):
+            days = [d.isoformat() for d in cal.days(start, end) if d.weekday() < 5 and cal.status(d) == status]
+            if days:
+                gaps.append("%d with %s (%s)" % (len(days), words, ", ".join(days[:4]) + (" ..." if len(days) > 4 else "")))
+        res["complete"] = ("unresolved", "weekdays not accounted for: " + "; ".join(gaps))
 
     share = len(mine) / float(len(sessions)) if sessions else 0.0
     need = _value(crit["min_presence"])
