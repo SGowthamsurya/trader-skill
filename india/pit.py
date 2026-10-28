@@ -19,6 +19,14 @@ data behind it.
                       close after it
   status(day)         the calendar status of a day on or before the view
   gaps()              documented gaps on or before the view date
+  keys(day)           listing keys with a verified trade on a tradable session
+  rows(day)           copies of every verified fund row on a tradable session
+  idents(day)         {key: ISIN} on a tradable session, identity-only rows
+                      included (for identity checks, never for prices)
+  isin(key, day)      the ISIN a key carried on a session, including keys seen
+                      only with a non-fund ISIN (identity, never a price)
+  adjacent(a, b)      calendar adjacency of two sessions, both on or before
+                      the view date
 
 The view date itself must be a tradable session: no decision is taken on a
 gap. Prices only: corporate actions, eligibility evidence and evaluator
@@ -31,7 +39,6 @@ the strategy in a separate process with only serialized past data are the
 stronger protections, built in later stages.
 """
 
-import copy
 import datetime
 import os
 import sys
@@ -60,10 +67,11 @@ class MarketData(object):
     def __init__(self, calendar, rows_by_date, venue):
         self._cal = calendar
         self._venue = venue
-        self._rows = {}
+        self._rows, self._ident = {}, {}
         for day, rows in rows_by_date.items():
             keep = {k: dict(r) for k, r in rows.items() if not r.get("identity_only")}
             self._rows[_iso(day)] = keep
+            self._ident[_iso(day)] = {k: r.get("isin") for k, r in rows.items() if r.get("isin")}
         self._sessions = sorted(d for d in self._rows if calendar.tradable(d))
 
     @property
@@ -119,7 +127,7 @@ class View(object):
         if not self._data._cal.tradable(d):
             return None
         row = self._data._rows.get(d, {}).get(str(key))
-        return copy.deepcopy(row) if row else None
+        return dict(row) if row else None   # rows hold only scalars: a shallow copy is a full copy
 
     def closes(self, key, n):
         if n <= 0:
@@ -140,6 +148,35 @@ class View(object):
             if r and r.get("close") is not None:
                 closes[d] = r["close"]
         return marks.mark(closes, self._as_of, _PastCalendar(self._data._cal, self._as_of))
+
+    def keys(self, day=None):
+        d = self._guard(day or self._as_of)
+        if not self._data._cal.tradable(d):
+            return []
+        return sorted(self._data._rows.get(d, {}))
+
+    def rows(self, day):
+        d = self._guard(day)
+        if not self._data._cal.tradable(d):
+            return {}
+        return {k: dict(r) for k, r in self._data._rows.get(d, {}).items()}
+
+    def idents(self, day):
+        d = self._guard(day)
+        if not self._data._cal.tradable(d):
+            return {}
+        return dict(self._data._ident.get(d, {}))
+
+    def isin(self, key, day):
+        d = self._guard(day)
+        if not self._data._cal.tradable(d):
+            return None
+        return self._data._ident.get(d, {}).get(str(key))
+
+    def adjacent(self, a, b):
+        self._guard(a)
+        self._guard(b)
+        return self._data._cal.adjacent(_iso(a), _iso(b))
 
     def gaps(self):
         cal = self._data._cal
@@ -172,5 +209,5 @@ def from_cache(cache, venue):
     cal = calendar_in.from_cache(cache, venue)
     rows = {}
     for r, _, rs in bhav.observations(cache, venue, funds_only=True):
-        rows[r["date"]] = {secmaster.key_of(x): x for x in rs if x["exchange"] == venue and not x.get("identity_only")}
+        rows[r["date"]] = {secmaster.key_of(x): x for x in rs if x["exchange"] == venue}
     return MarketData(cal, rows, venue)

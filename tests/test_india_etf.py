@@ -308,6 +308,7 @@ class ShippedFiles(unittest.TestCase):
         self.assertIn("**ELIGIBLE** (every criterion passes): none", text)
         self.assertIn("does not show that no event occurred", text)
         self.assertIn("## Liquidity and execution", text)
+        self.assertIn("not a point-in-time eligibility list", text)
 
 
 if __name__ == "__main__":

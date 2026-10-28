@@ -376,7 +376,10 @@ def markdown(end, results, crit, cands_doc, liquidity=None):
              "AMFI file sha256 `%s` and %s price file of %s (sha256 `%s`)."
              % (cands_doc["amfi_file"]["sha256"][:16], cands_doc["venue"], cands_doc["price_file"]["date"],
                 cands_doc["price_file"]["sha256"][:16]), "",
-             "Venue note: %s" % crit["venue_note"], ""]
+             "Venue note: %s" % crit["venue_note"], "",
+             "This is a whole-period data-quality review: it uses the entire window at once, so it is not a "
+             "point-in-time eligibility list and must not choose holdings in a backtest. Backtests use "
+             "`india/universe.py`, which decides on each date from data and evidence knowable on that date.", ""]
     for verdict, words in (("ELIGIBLE", "every criterion passes"),
                            ("INSUFFICIENT DATA", "nothing fails, but required evidence is unresolved"),
                            ("NOT ELIGIBLE", "a criterion fails on the evidence there is")):

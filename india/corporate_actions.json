@@ -1,8 +1,10 @@
 {
-  "about": "Corporate actions on candidate ETFs, each with the documents that support it. A verified action's units multiplier and dates are stated in an official document; they are never derived from a price change, which is only checked against them. Unverified actions are leads: they resolve nothing. On the BSE files checked, PREVCLOSE was not restated on split ex-dates, so price files alone cannot confirm a split.",
+  "about": "Corporate actions on candidate ETFs, each with the documents that support it. announced_on is the date the action became public, taken from the document's own text; a point-in-time decision may use an action only on or after that date, and an action without it can never explain an earlier price break. A verified action's units multiplier and dates are stated in an official document; they are never derived from a price change, which is only checked against them. Unverified actions are leads: they resolve nothing. On the BSE files checked, PREVCLOSE was not restated on split ex-dates, so price files alone cannot confirm a split.",
   "actions": [
     {
       "id": "nippon-niftybees-face-value-2019",
+      "announced_on": "2019-12-06",
+      "announced_on_basis": "the notice's closing date line \"Mumbai, December 06, 2019\", which signs the combined Notice cum Addendum Nos. 107 and 108",
       "exchange": "BSE",
       "key": "590103",
       "scheme": "Nippon India ETF Nifty BeES",
@@ -29,6 +31,8 @@
     },
     {
       "id": "nippon-bankbees-face-value-2019",
+      "announced_on": "2019-12-06",
+      "announced_on_basis": "the notice's closing date line \"Mumbai, December 06, 2019\", which signs the combined Notice cum Addendum Nos. 107 and 108",
       "exchange": "BSE",
       "key": "590106",
       "scheme": "Nippon India ETF Bank BeES",
@@ -55,6 +59,8 @@
     },
     {
       "id": "hdfc-nifty-etf-face-value-2021",
+      "announced_on": null,
+      "announced_on_basis": "unknown: no document retrieved",
       "exchange": "BSE",
       "key": "539516",
       "scheme": "HDFC Nifty ETF (now HDFC NIFTY 50 ETF)",

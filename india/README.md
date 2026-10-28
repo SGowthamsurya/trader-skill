@@ -40,6 +40,7 @@ which are unchanged.
 | `MANUAL_DOWNLOADS.md` | the documents only a person can fetch here, with exact pages, formats, ranges and import commands |
 | `ENGINE.md` | the backtest engine design, stages and readiness gate |
 | `pit.py` | point-in-time market view: a strategy sees only sessions up to its decision date; reading later raises |
+| `universe.py` | point-in-time universe: which ETFs could be held on a date, from data and evidence knowable then, with reasons and a digest |
 | `ETF_REVIEW.md` | the current verdict for every candidate |
 
 ```bash

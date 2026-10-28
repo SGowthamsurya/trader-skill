@@ -104,6 +104,29 @@ class Marks(unittest.TestCase):
         self.assertTrue(flags[0].startswith("no-mark"))
 
 
+class Accessors(unittest.TestCase):
+    def test_keys_are_past_only_and_exclude_identity_rows(self):
+        v = build().view("2024-01-05")
+        self.assertEqual(v.keys(), ["K"])
+        self.assertEqual(build().view("2024-01-12").keys(GAP), [])
+        with self.assertRaises(pit.LookAheadError):
+            v.keys("2024-01-09")
+
+    def test_isin_includes_identity_only_rows_but_never_a_price(self):
+        v = build().view("2024-01-05")
+        self.assertEqual(v.isin("OLD", "2024-01-05"), "INE000SYN099")
+        self.assertIsNone(v.bar("OLD"))
+        with self.assertRaises(pit.LookAheadError):
+            v.isin("K", "2024-01-09")
+
+    def test_adjacency_is_past_only(self):
+        v = build().view("2024-01-12")
+        self.assertFalse(v.adjacent("2024-01-05", "2024-01-09")[0])    # a gap lies between
+        self.assertTrue(v.adjacent("2024-01-09", "2024-01-11")[0])     # a no-file day lies between
+        with self.assertRaises(pit.LookAheadError):
+            build().view("2024-01-05").adjacent("2024-01-05", "2024-01-09")
+
+
 class FromCache(unittest.TestCase):
     def test_built_from_verified_files(self):
         with tempfile.TemporaryDirectory() as d:
