@@ -181,7 +181,7 @@
       "expect": "html",
       "status": "ok",
       "checked_at": "2026-10-28",
-      "evidence": "HTTP 200 (55268 bytes); the page names brokerage, STT, transaction charges, GST, SEBI charges, stamp charges and DP charges. No values recorded yet.",
+      "evidence": "HTTP 200 (55268 bytes; again 200 on Phase 2.1 recheck); the page names brokerage, STT, transaction charges, GST, SEBI charges, stamp charges and DP charges. No values recorded yet.",
       "uncertainties": ["Primary only for Zerodha's own brokerage and DP charges; statutory and exchange charges must be confirmed at their primary sources.", "Values change; record the retrieval date with every value taken."]
     },
     {
@@ -205,10 +205,10 @@
       "purpose": ["tax", "costs"],
       "url": "https://www.indiacode.nic.in/",
       "expect": "html",
-      "status": "unverified",
-      "checked_at": null,
-      "evidence": "Not yet checked.",
-      "uncertainties": ["Planned primary source for tax provisions and effective dates; check access before use."]
+      "status": "blocked",
+      "checked_at": "2026-10-28",
+      "evidence": "HTTP 403 from the site (Phase 2.1).",
+      "uncertainties": ["Planned primary source for tax provisions and effective dates; the user may download the Acts in a browser and import them with evidence.py."]
     },
     {
       "id": "sebi",
@@ -220,7 +220,7 @@
       "expect": "html",
       "status": "partial",
       "checked_at": "2026-10-28",
-      "evidence": "Site root HTTP 200. The turnover-fee circular has not been located.",
+      "evidence": "Site root HTTP 200. Phase 2.1: circular SEBI/HO/MRD/TPD-1/P/CIR/2024/92 (True to Label) retrieved as PDF and read; the turnover-fee circulars for the window have not been located.",
       "uncertainties": []
     },
     {
@@ -261,6 +261,12 @@
       "checked_at": "2026-10-28",
       "evidence": "Empty reply from the server.",
       "uncertainties": []
-    }
+    },
+    {"id": "nse-circulars", "title": "NSE circulars archive (clearing, listing, holidays, charges)", "publisher": "National Stock Exchange of India", "authority": "primary", "purpose": ["corporate-actions", "calendar", "costs"], "url": "https://nsearchives.nseindia.com/content/circulars/", "expect": "html", "status": "blocked", "checked_at": "2026-10-28", "evidence": "Same host as the NSE bhavcopy archive, which closed connections from this session. Search results cite CML42888 and CMPT42889 (Nippon ETF split, 2019) and CMPT47359 and CML47344 (HDFC Nifty ETF split, 2021); none was retrieved.", "uncertainties": ["The user can download these public PDFs in a browser and import them with evidence.py."]},
+    {"id": "nippon-amc", "title": "Nippon India Mutual Fund website", "publisher": "Nippon Life India Asset Management Limited", "authority": "primary", "purpose": ["corporate-actions"], "url": "https://mf.nipponindiaim.com/", "expect": "html", "status": "partial", "checked_at": "2026-10-28", "evidence": "HTTP 200; www.nipponindiamf.com answered 522. Notice cum Addendum No. 107 was not located on the AMC site.", "uncertainties": []},
+    {"id": "hdfc-amc", "title": "HDFC Mutual Fund website and document host", "publisher": "HDFC Asset Management Company Limited", "authority": "primary", "purpose": ["corporate-actions"], "url": "https://www.hdfcfund.com/", "expect": "html", "status": "blocked", "checked_at": "2026-10-28", "evidence": "www.hdfcfund.com and files.hdfcfund.com answered HTTP 403.", "uncertainties": []},
+    {"id": "bse-filing-mirror", "title": "Business Standard copies of company filings to BSE", "publisher": "Business Standard", "authority": "secondary", "purpose": ["corporate-actions"], "url": "https://bsmedia.business-standard.com/", "expect": "html", "status": "partial", "checked_at": "2026-10-28", "evidence": "Served the Reliance Nippon Life AMC filing of 2019-12-13 (Notice cum Addendum No. 107) as a PDF; the same file was not found at BSE's attachment path.", "uncertainties": ["A mirror: the document is the AMC's, the host is not. Its checksum is recorded so it can be compared with an original."]},
+    {"id": "egazette", "title": "e-Gazette of India", "publisher": "Government of India", "authority": "primary", "purpose": ["tax", "costs"], "url": "https://egazette.gov.in/", "expect": "html", "status": "blocked", "checked_at": "2026-10-28", "evidence": "No response within 25 seconds.", "uncertainties": []},
+    {"id": "cbic-gst", "title": "CBIC GST portal (rate notifications)", "publisher": "Central Board of Indirect Taxes and Customs", "authority": "primary", "purpose": ["tax", "costs"], "url": "https://cbic-gst.gov.in/", "expect": "html", "status": "partial", "checked_at": "2026-10-28", "evidence": "HTTP 200; the applicable rate notification was not identified.", "uncertainties": []}
   ]
 }

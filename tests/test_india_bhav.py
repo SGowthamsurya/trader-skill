@@ -5,6 +5,7 @@ import unittest
 import _india_fixtures as fx
 import bhav  # noqa: E402
 import fetch  # noqa: E402
+import sources as src  # noqa: E402
 
 ROWS = [("590901", "SYNTH NIFTY", "INF000SYN011", 101.5, 100.0, 1000, 101500.0)]
 
@@ -101,6 +102,84 @@ class Collect(unittest.TestCase):
     def test_sampling_skips_weekends_by_choice(self):
         self.assertEqual([x.isoformat() for x in bhav.weekdays(fx.d("2024-01-05"), fx.d("2024-01-08"))],
                          ["2024-01-05", "2024-01-08"])
+
+
+class Collector(unittest.TestCase):
+    """The resumable daily collector, against a fake network that answers by URL."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cache = fetch.Cache(os.path.join(self.tmp.name, "c"))
+        self.doc = src.read()
+        self.calls = []
+        self.answers = {}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def net(self, url, headers, timeout, max_bytes):
+        self.calls.append(url)
+        a = self.answers.get(url, "html")
+        if a == "down":
+            raise fetch.FetchError("could not reach %s" % url)
+        body = b"<!DOCTYPE html><html>not found</html>" if a == "html" else a
+        return {"status": 200, "url": url, "content_type": "", "body": body}
+
+    def url(self, sid, day):
+        s = src.get(self.doc, sid)
+        return src.render(s, src.params_for(s, day))
+
+    def fetcher(self):
+        return fetch.Fetcher(self.doc, self.cache, opener=self.net, clock=lambda: 0.0, sleep=lambda s: None)
+
+    def legacy(self, day):
+        self.answers[self.url("bse-bhavcopy-isin", day)] = fx.bse_legacy(day, ROWS)
+
+    def test_files_refusals_and_layout_order(self):
+        self.legacy("2024-01-01")
+        self.legacy("2024-01-03")      # 2024-01-02 answers a page in both layouts: a non-trading response
+        u = "2024-08-05"
+        self.answers[self.url("bse-bhavcopy-udiff", u)] = fx.udiff(u, "BSE", [("1", "S", "B", "INF000SYN011", "S", 1, 1, 1, 1)])
+        res = bhav.collect(self.fetcher(), "BSE", fx.d("2024-01-01"), fx.d("2024-01-03"), 50)
+        self.assertEqual((res["files"], res["refused"], res["network"], res["unresolved"]), (2, 2, 0, 0))
+        self.assertTrue(self.calls[0].endswith("EQ_ISINCODE_010124.ZIP"))  # legacy first before the switch
+        self.calls[:] = []
+        res = bhav.collect(self.fetcher(), "BSE", fx.d(u), fx.d(u), 50)
+        self.assertEqual(res["files"], 1)
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn("BhavCopy_BSE_CM", self.calls[0])                  # UDiFF first after it
+
+    def test_it_resumes_without_asking_again(self):
+        self.legacy("2024-01-01")
+        bhav.collect(self.fetcher(), "BSE", fx.d("2024-01-01"), fx.d("2024-01-02"), 50)
+        n = len(self.calls)
+        res = bhav.collect(self.fetcher(), "BSE", fx.d("2024-01-01"), fx.d("2024-01-02"), 50)
+        self.assertEqual((len(self.calls), res["requests"], res["unresolved"]), (n, 0, 0))
+
+    def test_the_request_budget_is_a_hard_stop(self):
+        res = bhav.collect(self.fetcher(), "BSE", fx.d("2024-01-01"), fx.d("2024-01-31"), 5)
+        self.assertEqual((len(self.calls), res["requests"], res["stopped"]), (5, 5, "request budget"))
+        self.assertGreater(res["unresolved"], 0)
+
+    def test_network_failures_stop_the_batch_and_stay_unresolved(self):
+        for d in ("2024-01-01", "2024-01-02", "2024-01-03"):
+            for sid in ("bse-bhavcopy-isin", "bse-bhavcopy-udiff"):
+                self.answers[self.url(sid, d)] = "down"
+        res = bhav.collect(self.fetcher(), "BSE", fx.d("2024-01-01"), fx.d("2024-01-05"), 50, max_network_failures=3)
+        self.assertEqual((res["network"], res["stopped"], len(self.calls)), (3, "3 network failures in a row", 3))
+        self.assertEqual(res["unresolved"], 5)
+
+    def test_an_invalid_file_is_an_error_not_a_session_and_is_not_refetched(self):
+        self.answers[self.url("bse-bhavcopy-isin", "2024-01-01")] = fx.bse_legacy("2024-01-02", ROWS)  # wrong date
+        res = bhav.collect(self.fetcher(), "BSE", fx.d("2024-01-01"), fx.d("2024-01-01"), 50)
+        self.assertEqual((res["invalid"], res["files"], res["unresolved"]), (1, 0, 1))
+        self.assertEqual(bhav.observations(self.cache, "BSE"), [])
+        import calendar_in
+        self.assertEqual(calendar_in.from_cache(self.cache, "BSE").status("2024-01-01"), "invalid")
+        n = len(self.calls)
+        again = bhav.collect(self.fetcher(), "BSE", fx.d("2024-01-01"), fx.d("2024-01-01"), 50)
+        self.assertEqual((len(self.calls), again["invalid"]), (n, 0))
+        self.assertEqual(len([r for r in self.cache.records() if r.get("kind") == "invalid"]), 1)
 
 
 if __name__ == "__main__":

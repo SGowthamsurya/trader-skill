@@ -59,7 +59,7 @@ class Structure(unittest.TestCase):
 class Registry(unittest.TestCase):
     def test_the_shipped_registry_is_valid(self):
         self.assertEqual(src.validate(registry()), [])
-        self.assertEqual(len(src.read()["sources"]), 19)
+        self.assertEqual(len(src.read()["sources"]), 25)
 
     def test_it_records_access_facts_not_rates(self):
         text = json.dumps(registry()).lower()
@@ -80,7 +80,7 @@ class Registry(unittest.TestCase):
     def test_blocked_and_unverified_hosts_are_not_allowed(self):
         hosts = src.allowed_hosts(registry())
         for h in ("www.nseindia.com", "api.bseindia.com", "incometaxindia.gov.in", "nsdl.co.in",
-                  "www.indiacode.nic.in"):
+                  "www.indiacode.nic.in", "www.hdfcfund.com", "egazette.gov.in"):
             self.assertNotIn(h, hosts)
         self.assertIn("nsearchives.nseindia.com", hosts)
 
@@ -102,9 +102,8 @@ class Registry(unittest.TestCase):
 
     def test_unverified_sources_carry_no_check_date(self):
         doc = registry()
-        s = src.get(doc, "india-code")
-        self.assertEqual(s["status"], "unverified")
-        s["checked_at"] = "2026-10-28"
+        s = doc["sources"][0]
+        s["status"], s["checked_at"] = "unverified", "2026-10-28"
         self.assertTrue(any("unverified" in p for p in src.validate(doc)))
 
     def test_read_refuses_an_invalid_file(self):

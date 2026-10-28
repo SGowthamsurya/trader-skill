@@ -22,7 +22,7 @@ def files(spec):
 
 def confirm(**kw):
     c = {"exchange": "BSE", "key": "590901", "from_isin": A, "to_isin": B, "effective_on": None,
-         "source_url": URL, "retrieved_on": "2026-10-29"}
+         "verification": "verified", "source_url": URL, "retrieved_on": "2026-10-29"}
     c.update(kw)
     return c
 
@@ -55,6 +55,12 @@ class Changes(unittest.TestCase):
         e = [x for x in m.events if x["type"] == "isin-change"][0]
         self.assertEqual((e["status"], e["effective_on"], e["confirmation"]), ("confirmed", "2024-01-04", URL))
         self.assertTrue(m.chain(B)["confirmed"])
+
+    def test_a_corroborated_link_is_shown_but_never_confirmed(self):
+        m = sm.Master(files(self.spec), [confirm(verification="corroborated", effective_on="2024-01-04")])
+        e = [x for x in m.events if x["type"] == "isin-change"][0]
+        self.assertEqual((e["status"], e["effective_on"], e["confirmation"]), ("corroborated", None, URL))
+        self.assertFalse(m.chain(B)["confirmed"])
 
     def test_confirmations_that_do_not_fit_are_conflicts(self):
         m = sm.Master(files(self.spec), [confirm(effective_on="2024-01-02")])
@@ -92,14 +98,22 @@ class Conflicts(unittest.TestCase):
 
 
 class ConfirmationFile(unittest.TestCase):
-    def test_the_shipped_file_is_empty_and_valid(self):
-        self.assertEqual(sm.read_confirmations(), [])
+    def test_the_shipped_file_is_valid_and_claims_no_more_than_it_shows(self):
+        cs = sm.read_confirmations()
+        self.assertTrue(cs)
+        for c in cs:
+            self.assertTrue(c["documents"], c["key"])
+        # no retrieved document states both Nippon ISINs, so neither link may be 'verified'
+        nippon = {c["key"]: c["verification"] for c in cs if c["from_isin"].startswith("INF732E")}
+        self.assertEqual(nippon, {"590103": "corroborated", "590106": "corroborated"})
 
     def test_validation(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "c.json")
             for bad, why in ((confirm(source_url="http://x"), "https"), (confirm(retrieved_on=None), "retrieved_on"),
-                             (confirm(effective_on="4 Jan 2024"), "YYYY-MM-DD")):
+                             (confirm(effective_on="4 Jan 2024"), "YYYY-MM-DD"),
+                             (confirm(verification="likely"), "verified or corroborated"),
+                             ({k: v for k, v in confirm().items() if k != "verification"}, "verification")):
                 with open(p, "w") as fh:
                     json.dump({"confirmations": [bad]}, fh)
                 with self.assertRaisesRegex(sm.SecError, why):

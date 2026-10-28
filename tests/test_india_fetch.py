@@ -177,8 +177,9 @@ class Refusals(Base):
             raise fetch.FetchError("could not reach %s" % url)
         f = fetch.Fetcher(self.doc, self.cache, opener=down, clock=self.clock, sleep=self.clock.sleep)
         for _ in range(2):
-            with self.assertRaises(fetch.FetchError):
+            with self.assertRaises(fetch.FetchError) as cm:
                 f.get("nse-bhavcopy-legacy", "2018-01-02")
+            self.assertEqual(cm.exception.reason, "network")
         self.assertEqual(len(calls), 2)
         self.assertEqual([r["reason"] for r in self.cache.records()], ["network", "network"])
 

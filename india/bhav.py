@@ -24,6 +24,16 @@ instrument missing from one is "no trade recorded", not "delisted".
     python3 bhav.py show BSE 2018-01-02 --isin INF732E01011
     python3 bhav.py sample BSE --from 2018-01 --to 2026-10       # first session each month
     python3 bhav.py sample BSE --daily 2019-11-25 2019-12-20       # every weekday in a range
+    python3 bhav.py collect BSE --from 2018-01-01 --to 2026-10-27 --max-requests 200
+    python3 bhav.py status BSE --from 2018-01-01 --to 2026-10-27
+
+collect is resumable: the manifest is its state. A weekday is resolved when
+a valid file for it is cached, or when every layout of the venue refused
+it. Only unresolved weekdays are asked for, layouts in the order the
+evidence says they were published, until --max-requests network requests
+have been made or --max-network-failures network failures happen in a row.
+A file that downloads but does not parse (wrong date, unknown layout, no
+rows) is recorded as invalid: an error, not a non-trading day.
 
 Sampling skips Saturdays and Sundays to save requests. That is a choice
 about where to look, not a claim that the market was shut: calendar_in.py
@@ -50,6 +60,9 @@ VENUES = {"NSE": ("nse-bhavcopy-udiff", "nse-bhavcopy-legacy"),
           "BSE": ("bse-bhavcopy-udiff", "bse-bhavcopy-isin")}
 SOURCE_VENUE = {s: v for v, ss in VENUES.items() for s in ss}
 MAX_MEMBER = 256 * 1024 * 1024
+# Layout order by date, from the Phase 2 evidence in sources.json: BSE's
+# legacy ISIN file was last seen 2024-07-01, UDiFF first seen 2024-08-01.
+SWITCH = {"BSE": ("2024-07-01", "2024-08-01")}
 
 LAYOUTS = {
     "nse-legacy": {"need": ("SYMBOL", "SERIES", "CLOSE", "PREVCLOSE", "TOTTRDQTY", "TOTTRDVAL", "TIMESTAMP", "ISIN"),
@@ -147,11 +160,17 @@ def parse(data, want_date=None):
         raise BhavError("the file mixes dates: %s" % ", ".join(sorted(dates)))
     return layout, rows
 
+def invalid_shas(records):
+    return {r["sha256"] for r in records if r.get("kind") == "invalid" and r.get("sha256")}
+
+
 def observations(cache, venue=None, verify=True):
-    """[(record, layout, rows)] for every price file in the cache, oldest first."""
+    """[(record, layout, rows)] for every valid price file in the cache, oldest first."""
     out = []
-    for r in cache.records():
-        if not r.get("ok") or r.get("source") not in SOURCE_VENUE or not r.get("sha256"):
+    recs = cache.records()
+    bad = invalid_shas(recs)
+    for r in recs:
+        if not r.get("ok") or r.get("source") not in SOURCE_VENUE or not r.get("sha256") or r["sha256"] in bad:
             continue
         if venue and SOURCE_VENUE[r["source"]] != venue:
             continue
@@ -186,6 +205,84 @@ def fetch_session(fetcher, venue, day, prefer):
         return rec
     return None
 
+def layout_order(venue, day):
+    """The venue's sources, the one published on this day first."""
+    order = list(VENUES[venue])
+    sw = SWITCH.get(venue)
+    if sw and day <= sw[0]:
+        order.reverse()  # legacy layout first
+    return order
+
+
+def resolution(records, venue):
+    """({date: sha256} of valid files, {date: sources that refused}, {date: sources whose file was invalid})."""
+    bad = invalid_shas(records)
+    ok, refused, invalid = {}, {}, {}
+    for r in records:
+        if SOURCE_VENUE.get(r.get("source")) != venue or not r.get("date"):
+            continue
+        if r.get("kind") == "invalid":
+            invalid.setdefault(r["date"], set()).add(r["source"])
+        elif r.get("ok") and r.get("sha256") and r["sha256"] not in bad:
+            ok[r["date"]] = r["sha256"]
+        elif not r.get("ok") and r.get("reason") in fetch.REFUSALS:
+            refused.setdefault(r["date"], set()).add(r["source"])
+    return ok, refused, invalid
+
+
+def unresolved(records, venue, start, end):
+    ok, refused, _ = resolution(records, venue)
+    every = set(VENUES[venue])
+    return [d for d in (x.isoformat() for x in weekdays(start, end))
+            if d not in ok and not refused.get(d, set()) >= every]
+
+
+def collect(fetcher, venue, start, end, max_requests, max_network_failures=3, log=None):
+    """Fetch unresolved weekdays until the request budget is spent. Resumable."""
+    cache = fetcher.cache
+    n0 = len(cache.records())
+    out = {"requests": 0, "files": 0, "refused": 0, "invalid": 0, "network": 0, "stopped": None}
+    streak = 0
+    for day in unresolved(cache.records(), venue, start, end):
+        _, refused, invalid = resolution(cache.records(), venue)
+        for sid in layout_order(venue, day):
+            if sid in refused.get(day, ()) or sid in invalid.get(day, ()):
+                continue  # already answered; an invalid file waits for a person, not a re-fetch
+            if len(cache.records()) - n0 >= max_requests:
+                out["stopped"] = "request budget"
+                break
+            try:
+                rec = fetcher.get(sid, day)
+            except fetch.FetchError as e:
+                if e.reason == "network":
+                    out["network"] += 1
+                    streak += 1
+                    if streak >= max_network_failures:
+                        out["stopped"] = "%d network failures in a row" % streak
+                        break
+                    continue
+                out["refused"] += 1
+                streak = 0
+                continue
+            streak = 0
+            try:
+                parse(cache.read(rec["sha256"]), day)
+            except BhavError as e:
+                cache.note({"kind": "invalid", "ok": False, "source": sid, "url": rec["url"], "date": day,
+                            "sha256": rec["sha256"], "detail": str(e), "retrieved_at": fetch.utc_now()})
+                out["invalid"] += 1
+                continue
+            out["files"] += 1
+            if log:
+                log("%s %s" % (day, sid))
+            break
+        if out["stopped"]:
+            break
+    out["requests"] = len(cache.records()) - n0 - out["invalid"]
+    out["unresolved"] = len(unresolved(cache.records(), venue, start, end))
+    return out
+
+
 def months(a, b):
     y, m = a
     while (y, m) <= b:
@@ -207,6 +304,14 @@ def main(argv=None):
     pm.add_argument("--to", dest="end", help="YYYY-MM, last month")
     pm.add_argument("--daily", nargs=2, metavar=("FROM", "TO"), help="every weekday FROM..TO (YYYY-MM-DD)")
     pm.add_argument("--max-tries", type=int, default=6, help="weekdays tried per month before giving up")
+    for name in ("collect", "status"):
+        pc = sub.add_parser(name)
+        pc.add_argument("venue", choices=sorted(VENUES))
+        pc.add_argument("--from", dest="start", required=True, help="YYYY-MM-DD")
+        pc.add_argument("--to", dest="end", required=True, help="YYYY-MM-DD")
+        if name == "collect":
+            pc.add_argument("--max-requests", type=int, required=True)
+            pc.add_argument("--max-network-failures", type=int, default=3)
     a = ap.parse_args(argv)
     cache = fetch.Cache(a.cache)
     try:
@@ -218,6 +323,23 @@ def main(argv=None):
                     if not a.isin or x["isin"] in a.isin:
                         print(json.dumps(x, sort_keys=True))
             return 0
+        if a.cmd in ("collect", "status"):
+            start, end = datetime.date.fromisoformat(a.start), datetime.date.fromisoformat(a.end)
+            if a.cmd == "status":
+                recs = cache.records()
+                ok, refused, invalid = resolution(recs, a.venue)
+                days = [x.isoformat() for x in weekdays(start, end)]
+                every = set(VENUES[a.venue])
+                print("%d weekdays: %d with a valid file, %d refused in every layout, %d unresolved, "
+                      "%d with an invalid file on record" % (
+                          len(days), sum(d in ok for d in days),
+                          sum(d not in ok and refused.get(d, set()) >= every for d in days),
+                          len(unresolved(recs, a.venue, start, end)), sum(d in invalid for d in days)))
+                return 0
+            res = collect(fetch.Fetcher(src.read(a.registry), cache), a.venue, start, end, a.max_requests,
+                          a.max_network_failures)
+            print(json.dumps(res, sort_keys=True))
+            return 0 if not res["network"] else 1
         f = fetch.Fetcher(src.read(a.registry), cache)
         prefer = [None]
         got = missed = 0

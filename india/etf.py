@@ -24,17 +24,24 @@ Criteria (thresholds in etf_criteria.json):
   presence      it has a row on at least min_presence of the venue's
                 observed sessions in the window
   corporate     every break beyond break_ratio between adjacent sessions
-                matches a confirmed action (india/corporate_actions.json); a
-                break between sessions that are not adjacent cannot be
-                located and stays unresolved
+                matches a verified action (india/corporate_actions.json): on
+                its ex-date, or, where the document gives only a record date,
+                on the record date or the session before it. The ratio is the
+                document's; the observed price change must agree with it within
+                ratio_tolerance or the criterion fails. A break between
+                sessions that are not adjacent cannot be located and stays
+                unresolved
   liquidity     median daily traded value on the venue at or above the
-                threshold (unresolved while no threshold is set)
+                threshold (unresolved while no threshold is set). Sessions
+                from the first observed day on which it did not trade count
+                as zero: a buyer cannot trade on them.
   affordable    no observed close above capital_inr; a pass needs a
                 complete history
 
     python3 etf.py discover BSE
     python3 etf.py evaluate
     python3 etf.py evaluate --markdown > india/ETF_REVIEW.md
+    python3 etf.py liquidity --thresholds 50000 100000 300000 1000000   # what each threshold would do
 """
 
 import argparse
@@ -68,8 +75,51 @@ RULES = (
 )
 
 
+ACTION_FIELDS = ("id", "exchange", "key", "type", "units_multiplier", "record_date", "ex_date", "verification",
+                 "documents")
+RATIO_TOLERANCE = 0.15
+
+
 class EtfError(Exception):
     pass
+
+
+def read_actions(path=None):
+    doc = read_json(path or ACTIONS, "corporate actions")
+    acts = doc.get("actions", [])
+    for i, a in enumerate(acts):
+        for k in ACTION_FIELDS:
+            if k not in a:
+                raise EtfError("corporate action #%d has no %s" % (i, k))
+        if a["verification"] not in ("verified", "unverified"):
+            raise EtfError("corporate action %s: verification must be verified or unverified" % a["id"])
+        if not a["record_date"] and not a["ex_date"]:
+            raise EtfError("corporate action %s needs a record date or an ex-date" % a["id"])
+        if a["verification"] == "verified":
+            if not (isinstance(a["units_multiplier"], (int, float)) and a["units_multiplier"] > 0):
+                raise EtfError("corporate action %s: a verified action states its units multiplier" % a["id"])
+            if not a["documents"]:
+                raise EtfError("corporate action %s: a verified action cites a document" % a["id"])
+        for d in a["documents"]:
+            if not str(d.get("url", "")).startswith("https://") or not re.match(r"^[0-9a-f]{64}$", d.get("sha256", "")):
+                raise EtfError("corporate action %s: each document needs an https url and a sha256" % a["id"])
+    return acts
+
+
+def match_action(actions, cal, venue, key, a, b, ratio):
+    """('confirmed', action), ('mismatch', action) or (None, None) for a break between a and b."""
+    for x in actions:
+        if x.get("verification") != "verified" or x.get("exchange") != venue or str(x.get("key")) != key:
+            continue
+        hit = x.get("ex_date") == b
+        if not hit and not x.get("ex_date") and x.get("record_date"):
+            rd = datetime.date.fromisoformat(x["record_date"])
+            before = cal.sessions(rd - datetime.timedelta(days=10), rd - datetime.timedelta(days=1))
+            hit = b == x["record_date"] or (bool(before) and b == before[-1].isoformat())
+        if hit:
+            ok = abs(ratio * x["units_multiplier"] - 1) <= RATIO_TOLERANCE
+            return ("confirmed" if ok else "mismatch"), x
+    return None, None
 
 
 def read_json(path, what):
@@ -147,8 +197,9 @@ def evaluate(cand, crit, cal, master, rows_by_date, actions, end):
     if conf:
         res["identity"] = ("fail", "; ".join(c["detail"] for c in conf))
     elif pending:
-        res["identity"] = ("unresolved", "; ".join("%s %s: %s -> %s between %s and %s, not confirmed" % (
-            e["exchange"], e["key"], e["from_isin"], e["to_isin"], e["after"], e["on_or_before"]) for e in pending))
+        res["identity"] = ("unresolved", "; ".join("%s %s: %s -> %s between %s and %s, %s" % (
+            e["exchange"], e["key"], e["from_isin"], e["to_isin"], e["after"], e["on_or_before"],
+            "corroborated but not verified" if e["status"] == "corroborated" else "not confirmed") for e in pending))
     else:
         res["identity"] = ("pass", "ISINs %s" % ", ".join(chain["isins"]))
 
@@ -179,20 +230,24 @@ def evaluate(cand, crit, cal, master, rows_by_date, actions, end):
         if r > ratio or r < 1 / ratio:
             ok, assumed = cal.adjacent(a["date"], b["date"])
             (located if ok else unlocated).append((a["date"], b["date"], r, assumed))
-    open_breaks = []
+    open_breaks, mismatched, explained = [], [], []
     for a, b, r, assumed in located:
-        hit = [x for x in actions if x.get("exchange") == crit["venue"] and str(x.get("key")) == cand["key"]
-               and x.get("ex_date") == b]
-        if not hit:
+        how, act = match_action(actions, cal, crit["venue"], cand["key"], a, b, r)
+        if how == "confirmed":
+            explained.append("%s -> %s by %s" % (a, b, act["id"]))
+        elif how == "mismatch":
+            mismatched.append("%s -> %s moved %.4fx but %s states 1/%s" % (a, b, r, act["id"], act["units_multiplier"]))
+        else:
             open_breaks.append("%s -> %s ratio %.4f, not confirmed" % (a, b, r))
     for a, b, r, _ in unlocated:
         open_breaks.append("%s .. %s ratio %.4f, between sessions that are not adjacent" % (a, b, r))
-    res["corporate"] = ("unresolved", "; ".join(open_breaks)) if open_breaks else (
-        ("pass", "no breaks beyond %.2fx between observed sessions" % ratio) if cov["complete_weekdays"] else
-        ("unresolved", "no breaks seen, but the history is incomplete"))
+    done = "; ".join(explained) or "no breaks beyond %.2fx between observed sessions" % ratio
+    res["corporate"] = ("fail", "; ".join(mismatched)) if mismatched else (
+        ("unresolved", "; ".join(open_breaks)) if open_breaks else
+        ("pass", done) if cov["complete_weekdays"] else
+        ("unresolved", "%s, but the history is incomplete" % done))
 
-    vals = [x["value"] for x in mine if x["value"] is not None]
-    med = statistics.median(vals) if vals else None
+    med = daily_values(sessions, mine)["median"]
     thr = crit["liquidity"].get("min_median_value_inr")
     shown = "median traded value Rs %s on %s" % ("{:,.0f}".format(med) if med is not None else "n/a", crit["venue"])
     if thr is None:
@@ -214,6 +269,38 @@ def evaluate(cand, crit, cal, master, rows_by_date, actions, end):
     outcomes = [v[0] for v in res.values()]
     verdict = "NOT ELIGIBLE" if "fail" in outcomes else "INSUFFICIENT DATA" if "unresolved" in outcomes else "ELIGIBLE"
     return verdict, res
+
+
+def daily_values(sessions, mine):
+    """Traded value per venue session from the first day observed, a missed session counting as zero."""
+    if not mine:
+        return {"median": None, "p10": None, "sessions": 0, "traded": 0}
+    by = {x["date"]: (x["value"] or 0.0) for x in mine}
+    span = [d for d in sessions if d >= mine[0]["date"]]
+    vals = sorted(by.get(d, 0.0) for d in span)
+    return {"median": statistics.median(vals), "p10": vals[len(vals) // 10], "sessions": len(span),
+            "traded": sum(1 for d in span if by.get(d, 0.0) > 0)}
+
+
+def liquidity_table(cache, crit, cands, thresholds):
+    venue = crit["venue"]
+    obs = bhav.observations(cache, venue)
+    cal = calendar_in.from_cache(cache, venue)
+    end = crit["window"]["end"] or (cal.last_observed.isoformat() if cal.last_observed else crit["window"]["start"])
+    sessions = [d.isoformat() for d in cal.sessions(crit["window"]["start"], end)]
+    rows_by_date = {rows[0]["date"]: {secmaster.key_of(x): x for x in rows if x["exchange"] == venue}
+                    for _, _, rows in obs}
+    out = []
+    for c in cands:
+        if c["exchange"] != venue:
+            continue
+        mine = [rows_by_date[d][c["key"]] for d in sessions if c["key"] in rows_by_date.get(d, {})]
+        v = daily_values(sessions, mine)
+        v.update({"candidate": c, "first": mine[0]["date"] if mine else None,
+                  "capital_share": (crit["capital_inr"] / v["median"]) if v["median"] else None,
+                  "passes": {t: bool(v["median"] is not None and v["median"] >= t) for t in thresholds}})
+        out.append(v)
+    return end, out
 
 
 def evaluate_all(cache, crit, cands, actions, confirmations=secmaster.CONFIRMATIONS):
@@ -269,6 +356,8 @@ def main(argv=None):
     pe = sub.add_parser("evaluate")
     pe.add_argument("--markdown", action="store_true")
     pe.add_argument("--json", action="store_true")
+    pl = sub.add_parser("liquidity")
+    pl.add_argument("--thresholds", type=float, nargs="+", default=[50000, 100000, 300000, 1000000, 10000000])
     a = ap.parse_args(argv)
     cache = fetch.Cache(a.cache)
     try:
@@ -281,7 +370,25 @@ def main(argv=None):
             return 0
         crit = read_json(a.criteria, "criteria")
         cands_doc = read_json(a.candidates, "candidates (run etf.py discover first)")
-        actions = read_json(a.actions, "corporate actions").get("actions", [])
+        if a.cmd == "liquidity":
+            end, rows = liquidity_table(cache, crit, cands_doc["candidates"], a.thresholds)
+            ts = a.thresholds
+            print("%s, %s to %s; daily traded value in rupees, missed sessions counted as zero" % (
+                crit["venue"], crit["window"]["start"], end))
+            print("%-12s %-12s %10s %13s %13s %9s  %s" % ("category", "symbol", "first", "median", "10th pct",
+                                                       "traded", "  ".join("%g" % t for t in ts)))
+            for r in sorted(rows, key=lambda r: -(r["median"] or 0)):
+                c = r["candidate"]
+                print("%-12s %-12s %10s %13s %13s %8.1f%%  %s" % (
+                    c["category"], c["symbol"], r["first"] or "-",
+                    "{:,.0f}".format(r["median"]) if r["median"] is not None else "-",
+                    "{:,.0f}".format(r["p10"]) if r["p10"] is not None else "-",
+                    100.0 * r["traded"] / r["sessions"] if r["sessions"] else 0.0,
+                    "  ".join(("pass" if r["passes"][t] else "fail").rjust(len("%g" % t)) for t in ts)))
+            for t in ts:
+                print("threshold Rs %s: %d of %d pass" % ("{:,.0f}".format(t), sum(r["passes"][t] for r in rows), len(rows)))
+            return 0
+        actions = read_actions(a.actions)
         end, results = evaluate_all(cache, crit, cands_doc["candidates"], actions)
         if a.markdown:
             sys.stdout.write(markdown(end, results, crit, cands_doc))

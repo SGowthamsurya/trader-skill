@@ -17,7 +17,7 @@ which are unchanged.
   kept in the local cache (`india/data/`, ignored by git). Raw NSE/BSE files
   and large datasets are never committed.
 
-## What is here (Phases 1 and 2)
+## What is here (Phases 1, 2 and 2.1)
 
 | file | job |
 | --- | --- |
@@ -31,7 +31,9 @@ which are unchanged.
 | `etf.py` | finds candidate ETFs from AMFI scheme names and tests them against `etf_criteria.json` |
 | `etf_criteria.json` | the documented inclusion criteria; the liquidity threshold is left for the user to set |
 | `etf_candidates.json` | the 33 candidates found on 2026-10-28, with the checksums of the AMFI and BSE files used |
-| `identity_confirmations.json`, `corporate_actions.json` | sourced confirmations; empty until official notices are read |
+| `identity_confirmations.json`, `corporate_actions.json` | identity links and corporate actions, each with its documents and a verification level |
+| `evidence.py` | imports official documents (notices, circulars, holiday lists, Acts) with URL, retrieval date and SHA-256, and checks that every cited document is present |
+| `cost_tax_sources.json` | where each cost and tax component must be verified, split statutory / regulatory / exchange / depository / broker; no values |
 | `ETF_REVIEW.md` | the current verdict for every candidate |
 
 ```bash
@@ -44,6 +46,9 @@ python3 india/bhav.py sample BSE --from 2018-01 --to 2026-10
 python3 india/calendar_in.py coverage BSE 2018-01-01 2026-10-28
 python3 india/secmaster.py history BSE 590103
 python3 india/etf.py evaluate
+python3 india/etf.py liquidity
+python3 india/bhav.py collect BSE --from 2018-01-01 --to 2026-10-27 --max-requests 300   # resumable
+python3 india/evidence.py check
 python3 -m unittest discover -s tests -v
 ```
 
@@ -68,6 +73,29 @@ The TRI history is not available for automated download. To unblock it:
 
 The import stores the file in the local cache only. No dividend-yield
 approximation is substituted for the official TRI.
+
+## Evidence levels
+
+- **verified**: an official document, retrieved and read, states the fact.
+  Only this resolves an identity link or a corporate action.
+- **corroborated** (identity links): official sources together point to
+  it, but no single retrieved document states it. Shown, never relied on.
+- **unverified**: a lead (often a search summary of a document that could
+  not be retrieved). Resolves nothing.
+
+A split ratio always comes from a document. A price break is only checked
+against it; a ratio is never inferred from prices.
+
+## Documents only a person can fetch here
+
+Some publishers refuse this environment (NSE's archive, India Code, the
+income-tax site, HDFC AMC). They are not worked around. Download the
+document in a browser and import it:
+
+```bash
+python3 india/evidence.py import FILE.pdf --url https://... --retrieved-on YYYY-MM-DD \
+    --title "..." --publisher "..."
+```
 
 ## Benchmarks and windows (agreed in Phase 0)
 

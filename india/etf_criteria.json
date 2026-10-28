@@ -13,5 +13,5 @@
   "start_tolerance_days": {"value": 10, "status": "proposed"},
   "min_presence": {"value": 0.95, "status": "proposed", "note": "share of the venue's observed sessions in the window on which the ETF has a row (traded)"},
   "break_ratio": {"value": 1.5, "status": "proposed", "note": "a close-to-close change beyond this factor between adjacent sessions is treated as a possible corporate action, not a market move"},
-  "liquidity": {"min_median_value_inr": null, "status": "awaiting user decision", "note": "median daily traded value on the venue; the threshold has not been chosen"}
+  "liquidity": {"min_median_value_inr": null, "status": "awaiting user decision", "proposed_value": 300000, "note": "median daily traded value on the venue, sessions without trades counted as zero from the first observed day; the threshold has not been chosen", "rationale": "Proposed: the largest simulated order (the whole INR 3,000) should be at most 1 percent of a typical day's traded value, so that the study's own orders are a negligible share of the market they assume they can trade in. 3,000 / 0.01 = 300,000. See etf.py liquidity for the consequences of this and other thresholds."}
 }

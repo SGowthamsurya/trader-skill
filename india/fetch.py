@@ -266,8 +266,8 @@ class Fetcher(object):
             self._wait(urlsplit(url).hostname)
             body, r = self._download(url, s["expect"])
         except FetchError as e:
-            self.cache.note(dict(base, ok=False, reason=e.reason or "network", detail=str(e),
-                                 retrieved_at=utc_now()))
+            e.reason = e.reason or "network"  # callers decide whether to stop on this
+            self.cache.note(dict(base, ok=False, reason=e.reason, detail=str(e), retrieved_at=utc_now()))
             raise
         return self.cache.put(body, dict(base, ok=True, final_url=r["url"], content_type=r["content_type"],
                                          retrieved_at=utc_now()))

@@ -25,8 +25,15 @@ those dates. Nothing assumes an ISIN or a symbol is permanent.
 Confirmations live in india/identity_confirmations.json:
 
     {"exchange": "BSE", "key": "590103", "from_isin": "...", "to_isin": "...",
-     "effective_on": "YYYY-MM-DD" or null, "source_url": "https://...",
-     "retrieved_on": "YYYY-MM-DD", "note": "..."}
+     "effective_on": "YYYY-MM-DD" or null, "verification": "verified" or "corroborated",
+     "source_url": "https://...", "retrieved_on": "YYYY-MM-DD", "documents": [...], "note": "..."}
+
+verified      an official document states this change (old and new ISIN).
+              Only this confirms a link.
+corroborated  official sources together point to it (an issuer notice for
+              the old ISIN, AMFI for the new one, the switch observed on one
+              listing on the split day) but no single document states it.
+              Shown, never treated as confirmed.
 
     python3 secmaster.py history BSE 590103
     python3 secmaster.py isin INF204KB14I2
@@ -46,6 +53,7 @@ import bhav  # noqa: E402
 import fetch  # noqa: E402
 
 CONFIRMATIONS = os.path.join(HERE, "identity_confirmations.json")
+VERIFICATION = ("verified", "corroborated")
 
 
 class SecError(Exception):
@@ -67,9 +75,11 @@ def read_confirmations(path=CONFIRMATIONS):
         doc = json.load(fh)
     items = doc.get("confirmations", []) if isinstance(doc, dict) else doc
     for i, c in enumerate(items):
-        for k in ("exchange", "key", "from_isin", "to_isin", "source_url", "retrieved_on"):
+        for k in ("exchange", "key", "from_isin", "to_isin", "source_url", "retrieved_on", "verification"):
             if not c.get(k):
                 raise SecError("confirmation #%d has no %s" % (i, k))
+        if c["verification"] not in VERIFICATION:
+            raise SecError("confirmation #%d: verification must be verified or corroborated" % i)
         if not str(c["source_url"]).startswith("https://"):
             raise SecError("confirmation #%d: source_url must be https" % i)
         for k in ("retrieved_on", "effective_on"):
@@ -156,7 +166,11 @@ class Master(object):
                                        "key": e["key"], "detail": "effective %s is outside the observed window "
                                        "(after %s, on or before %s)" % (eff, e["after"], e["on_or_before"])})
                 continue
-            e["status"], e["effective_on"], e["confirmation"] = "confirmed", eff, c["source_url"]
+            if c.get("verification", "verified") == "verified":
+                e["status"], e["effective_on"] = "confirmed", eff
+            else:
+                e["status"] = "corroborated"
+            e["confirmation"] = c["source_url"]
 
     def history(self, exchange, key):
         ids = self.ident.get((exchange, key))

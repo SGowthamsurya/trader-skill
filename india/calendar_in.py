@@ -19,6 +19,7 @@ Every date gets one status:
                     and refused. Often a holiday, but a missing archive file
                     looks the same, so it is never called a holiday.
   unreachable       only network failures were recorded
+  invalid           a file came back but failed validation (an error)
   unobserved        nothing was asked
   conflict          an official holiday that has a trading file, or a file
                     dated differently from the day it was fetched for
@@ -106,7 +107,7 @@ def import_official(path, cache, exchange, source_url, retrieved_on):
 
 
 class Calendar(object):
-    def __init__(self, exchange, files, attempts, official=()):
+    def __init__(self, exchange, files, attempts, official=(), invalid=()):
         """files: {date: sha256} of verified price files;
         attempts: [(date, source, reason)] refusals and network failures;
         official: [(date, type, description, sha256)]."""
@@ -114,6 +115,7 @@ class Calendar(object):
         self.files = {_d(k): v for k, v in files.items()}
         self.sources = set(bhav.VENUES[exchange])
         self.refused, self.network = {}, set()
+        self.invalid = {_d(x) for x in invalid}
         for d, s, reason in attempts:
             d = _d(d)
             if reason == "network":
@@ -132,6 +134,8 @@ class Calendar(object):
             return "conflict" if off and off[0] == "holiday" else "trading"
         if off:
             return "official-holiday" if off[0] == "holiday" else "official-session"
+        if d in self.invalid:
+            return "invalid"
         if self.refused.get(d, set()) >= self.sources:
             return "no-file"
         if d in self.network:
@@ -154,7 +158,7 @@ class Calendar(object):
             s = self.status(d)
             part[s] = part.get(s, 0) + 1
         wd = out["weekday"]
-        out["complete_weekdays"] = not any(wd.get(s) for s in ("unobserved", "unreachable", "conflict"))
+        out["complete_weekdays"] = not any(wd.get(s) for s in ("unobserved", "unreachable", "conflict", "invalid"))
         out["unconfirmed_closures"] = wd.get("no-file", 0)
         return out
 
@@ -186,12 +190,14 @@ def from_cache(cache, exchange):
                 for r in cache.records()
                 if r.get("kind") == "fetch" and not r.get("ok") and r.get("date")
                 and bhav.SOURCE_VENUE.get(r.get("source")) == exchange]
+    invalid = [r["date"] for r in cache.records() if r.get("kind") == "invalid" and r.get("date")
+               and bhav.SOURCE_VENUE.get(r.get("source")) == exchange]
     official = []
     for r in cache.records():
         if r.get("source") == OFFICIAL and r.get("exchange") == exchange and r.get("ok"):
             for d, t, desc in parse_official(cache.read(r["sha256"]).decode("utf-8-sig")):
                 official.append((d, t, desc, r["sha256"]))
-    return Calendar(exchange, files, attempts, official)
+    return Calendar(exchange, files, attempts, official, invalid)
 
 
 def main(argv=None):

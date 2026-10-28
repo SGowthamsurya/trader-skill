@@ -1,4 +1,76 @@
 {
-  "about": "Confirmed corporate actions (unit splits, consolidations, mergers) with the official source for each. Empty until a fund-house or exchange notice is located and read. Price breaks found in the files stay unresolved until they match an entry here. Note: on the BSE files checked, PREVCLOSE was not restated on split ex-dates, so the price files alone cannot confirm a split.",
-  "actions": []
+  "about": "Corporate actions on candidate ETFs, each with the documents that support it. A verified action's units multiplier and dates are stated in an official document; they are never derived from a price change, which is only checked against them. Unverified actions are leads: they resolve nothing. On the BSE files checked, PREVCLOSE was not restated on split ex-dates, so price files alone cannot confirm a split.",
+  "actions": [
+    {
+      "id": "nippon-niftybees-face-value-2019",
+      "exchange": "BSE",
+      "key": "590103",
+      "scheme": "Nippon India ETF Nifty BeES",
+      "isin_before": "INF732E01011",
+      "type": "unit-split",
+      "face_value_before": "10",
+      "face_value_after": "1",
+      "units_multiplier": 10,
+      "record_date": "2019-12-20",
+      "ex_date": null,
+      "verification": "verified",
+      "verified_fields": ["face value per unit changed from 10 to 1", "record date 2019-12-20", "ISIN before the change INF732E01011"],
+      "unverified_fields": ["ex-date (stated in NSE clearing circular CMPT42889, which could not be retrieved)", "ISIN after the change"],
+      "documents": [
+        {
+          "title": "Notice cum Addendum No. 107 (change in face value of units)",
+          "publisher": "Reliance Nippon Life Asset Management Limited",
+          "url": "https://bsmedia.business-standard.com/_media/bs/data/announcements/bse/13122019/97181C16_21ED_4461_9552_B598D12A2190_130422.pdf",
+          "mirror_of": "the AMC's filing to BSE dated 2019-12-13; retrieved from Business Standard's copy because the BSE attachment path was not found",
+          "retrieved_on": "2026-10-28",
+          "sha256": "420679b383ceef67a00a513055226d06ed0403443d90d3606decf73834b6b52d"
+        }
+      ]
+    },
+    {
+      "id": "nippon-bankbees-face-value-2019",
+      "exchange": "BSE",
+      "key": "590106",
+      "scheme": "Nippon India ETF Bank BeES",
+      "isin_before": "INF732E01078",
+      "type": "unit-split",
+      "face_value_before": "10",
+      "face_value_after": "1",
+      "units_multiplier": 10,
+      "record_date": "2019-12-20",
+      "ex_date": null,
+      "verification": "verified",
+      "verified_fields": ["face value per unit changed from 10 to 1", "record date 2019-12-20", "ISIN before the change INF732E01078"],
+      "unverified_fields": ["ex-date", "ISIN after the change"],
+      "documents": [
+        {
+          "title": "Notice cum Addendum No. 107 (change in face value of units)",
+          "publisher": "Reliance Nippon Life Asset Management Limited",
+          "url": "https://bsmedia.business-standard.com/_media/bs/data/announcements/bse/13122019/97181C16_21ED_4461_9552_B598D12A2190_130422.pdf",
+          "mirror_of": "the AMC's filing to BSE dated 2019-12-13",
+          "retrieved_on": "2026-10-28",
+          "sha256": "420679b383ceef67a00a513055226d06ed0403443d90d3606decf73834b6b52d"
+        }
+      ]
+    },
+    {
+      "id": "hdfc-nifty-etf-face-value-2021",
+      "exchange": "BSE",
+      "key": "539516",
+      "scheme": "HDFC Nifty ETF (now HDFC NIFTY 50 ETF)",
+      "isin_before": "INF179KB1KP3",
+      "type": "unit-split",
+      "units_multiplier": null,
+      "record_date": "2021-02-19",
+      "ex_date": "2021-02-17",
+      "verification": "unverified",
+      "verified_fields": [],
+      "unverified_fields": ["all fields: dates and the face value change come from search summaries of NSE circulars CMPT47359 and CML47344, which could not be retrieved; HDFC AMC's own site refused requests"],
+      "leads": [
+        "https://nsearchives.nseindia.com/content/circulars/CMPT47359.pdf",
+        "https://nsearchives.nseindia.com/content/circulars/CML47344.pdf"
+      ],
+      "documents": []
+    }
+  ]
 }

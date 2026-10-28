@@ -1,4 +1,35 @@
 {
-  "about": "Confirmed identity changes (ISIN or listing changes) with the official source for each. Empty until a fund-house or exchange notice is located and read. A change that is only observed in the price files stays PROPOSED.",
-  "confirmations": []
+  "about": "Identity changes (ISIN or listing changes) with the evidence for each. Only verification 'verified' (a single official document states the old and new ISIN) confirms a link; 'corroborated' is shown but leaves the link unresolved.",
+  "confirmations": [
+    {
+      "exchange": "BSE",
+      "key": "590103",
+      "from_isin": "INF732E01011",
+      "to_isin": "INF204KB14I2",
+      "effective_on": null,
+      "verification": "corroborated",
+      "source_url": "https://bsmedia.business-standard.com/_media/bs/data/announcements/bse/13122019/97181C16_21ED_4461_9552_B598D12A2190_130422.pdf",
+      "retrieved_on": "2026-10-28",
+      "note": "The AMC notice ties INF732E01011 to Nippon India ETF Nifty BeES and changes its face value with record date 2019-12-20. AMFI's NAV file maps INF204KB14I2 to Nippon India ETF Nifty 50 BeES. BSE code 590103 switched from the first to the second ISIN between the 2019-12-18 and 2019-12-19 sessions, the same sessions as the price break. No retrieved document states both ISINs; NSE circular CML42888 is reported to, but could not be retrieved.",
+      "documents": [
+        {"title": "Notice cum Addendum No. 107", "url": "https://bsmedia.business-standard.com/_media/bs/data/announcements/bse/13122019/97181C16_21ED_4461_9552_B598D12A2190_130422.pdf", "retrieved_on": "2026-10-28", "sha256": "420679b383ceef67a00a513055226d06ed0403443d90d3606decf73834b6b52d"},
+        {"title": "AMFI NAVAll.txt", "url": "https://www.amfiindia.com/spages/NAVAll.txt", "retrieved_on": "2026-10-28", "sha256": "72dce09fcc8bda34e6c2c49b72a257d3bf217a6e18ed84f47818181eb95e6799"}
+      ]
+    },
+    {
+      "exchange": "BSE",
+      "key": "590106",
+      "from_isin": "INF732E01078",
+      "to_isin": "INF204KB15I9",
+      "effective_on": null,
+      "verification": "corroborated",
+      "source_url": "https://bsmedia.business-standard.com/_media/bs/data/announcements/bse/13122019/97181C16_21ED_4461_9552_B598D12A2190_130422.pdf",
+      "retrieved_on": "2026-10-28",
+      "note": "As for 590103: the AMC notice names INF732E01078 (Bank BeES); AMFI maps INF204KB15I9 to Nippon India ETF Nifty Bank BeES; the switch is observed between the 2019-12-18 and 2019-12-19 sessions.",
+      "documents": [
+        {"title": "Notice cum Addendum No. 107", "url": "https://bsmedia.business-standard.com/_media/bs/data/announcements/bse/13122019/97181C16_21ED_4461_9552_B598D12A2190_130422.pdf", "retrieved_on": "2026-10-28", "sha256": "420679b383ceef67a00a513055226d06ed0403443d90d3606decf73834b6b52d"},
+        {"title": "AMFI NAVAll.txt", "url": "https://www.amfiindia.com/spages/NAVAll.txt", "retrieved_on": "2026-10-28", "sha256": "72dce09fcc8bda34e6c2c49b72a257d3bf217a6e18ed84f47818181eb95e6799"}
+      ]
+    }
+  ]
 }
